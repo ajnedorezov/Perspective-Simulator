@@ -21,6 +21,9 @@ FOV.angle = 160; % deg
 
 FOV.camHeight = carheight; %m
 
+%% Setup the random number generator
+rng(26)
+
 %% Make the figure
 % Create a figure
 hf = clf(figure(1));
@@ -43,7 +46,7 @@ gpx = [-10 maxDist maxDist -10];
 gpy = [-100 -100 100 100];
 gpz = [0 0 0 0];
 
-hgp = patch(gpx, gpy, gpz, [0 0.5 0], 'edgecolor', 'none');
+hgp = patch(gpx, gpy, gpz, [0 0.25 0], 'edgecolor', 'none');
 
 %% Draw the background plane
 sx = maxDist*[1 1 1 1];
@@ -56,6 +59,8 @@ hs = patch(sx, sy, sz, [0 0.5 0.75], 'edgecolor', 'none');
 dlpx = [0 0 maxDist maxDist];
 dlpy = [0 lanewidth lanewidth 0];
 dlpz = [0 0 0 0] + 0.01;
+% asphalt = [0.3 0.3 0.3];
+asphalt = [40 43 42]/255;
 
 dlmx = [0 0 maxDist maxDist];
 dlmy = [0 lanemarkerwidth lanemarkerwidth 0];
@@ -63,7 +68,8 @@ dlmz = [0 0 0 0] + 2*0.01;
 
 hlm = patch(dlmx, 2*dlmy - lanemarkerwidth, dlmz, [1 0.95 0], 'edgecolor', 'none');
 for n = 1:numlanes
-    hdl(n) = patch(dlpx, dlpy + (n-1)*lanewidth, dlpz, [0.3 0.3 0.3], 'edgecolor', 'none');
+    
+    hdl(n) = patch(dlpx, dlpy + (n-1)*lanewidth, dlpz, asphalt, 'edgecolor', 'none');
     hlm(n+1) = patch(dlmx, dlmy + n*lanewidth - lanemarkerwidth/2, dlmz, [1 0.95 0], 'edgecolor', 'none');
 end
 
@@ -88,6 +94,14 @@ camtarget(targvec);  % The camera looks along the +Z axis
 camproj('perspective')
 camva(45)
 % camva(160)
+
+%% Set some lighting properties
+% camlight('left')
+% hLight = light('position', [maxDist/2 0 -10]);
+
+for n = 0:500:maxDist
+    light('Position', [n, 0 -2000])
+end
 
 %% Start driving forward
 
