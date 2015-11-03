@@ -86,8 +86,13 @@ campos(posvec);
 targvec = posvec + [lookAheadDist 0 0];
 camtarget(targvec);  % The camera looks along the +Z axis
 camproj('perspective')
-camva(45)
-% camva(160)
+if verLessThan('matlab', '8.5')
+    camva(10)
+    % Why do we need to do this???? And it still doesn't fully work
+    set(gca, 'xlim', [-10 500], 'ylim', [-10000 10000], 'zlim', [-10000, 10000]);   
+else
+    camva(45)
+end
 
 %% Start driving forward
 
