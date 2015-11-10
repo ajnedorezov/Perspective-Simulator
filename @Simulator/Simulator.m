@@ -3,6 +3,9 @@ classdef Simulator < handle
         hFigure
         HD
         
+        hResultsWindow
+        aVars       % Algorithm Variables
+        
         Player
         
         SceneObjects
@@ -57,6 +60,9 @@ classdef Simulator < handle
             campos(posvec);
             targvec = posvec + [self.DriverParams.lookAheadDistance 0 0];
             camtarget(targvec);  % The camera looks along the +Z axis
+%             vertvec = [0 0 1];
+%             camup(vertvec/norm(vertvec))
+            
             camproj('perspective')
             if verLessThan('matlab', '8.5')
                 camva(10)
@@ -72,14 +78,16 @@ classdef Simulator < handle
             set(self.hFigure, 'Visible', 'on');
             
             %% Start the simulation
+            self.InitializeAlgorithm();
+            
             self.Simulate();
         end
         
         function MakeWindow(self)
             self.HD.MainView = axes('Parent', self.hFigure');
             
-%             imsize = [1 1 512 512];
-            imsize = [1 1 640 480];
+            imsize = [1 1 512 512];
+%             imsize = [1 1 640 480];
 %             imsize = [1 1 800 600];
 %             imsize = [1 1 1024 768];
 %             imsize = [1 1 1280 960];
@@ -167,6 +175,53 @@ classdef Simulator < handle
     end
     
     methods
+        
+        function InitializeAlgorithm(self)
+            self.hResultsWindow = figure;
+            
+            rgb = getframe(self.HD.MainView);
+            rgb = rgb.cdata;
+            imsize = size(rgb);
+            self.aVars.imsize = imsize;
+            
+            self.aVars.k = 200;                                             % # of superpixels
+            self.aVars.N = prod(imsize(1:2));                    % # of pixels
+            self.aVars.S = sqrt(self.aVars.N/self.aVars.k);                 % # pixels / superpixel
+            
+            self.aVars.numStepsHeight = ceil(imsize(1)/self.aVars.S);
+            self.aVars.stepHeight = imsize(1)/self.aVars.numStepsHeight;
+            
+            self.aVars.numStepsWidth = ceil(imsize(2)/self.aVars.S);
+            self.aVars.stepWidth = imsize(2)/self.aVars.numStepsWidth;
+            
+            self.aVars.heightSpacing = round(((1:self.aVars.numStepsHeight)-0.5)*self.aVars.stepHeight);
+            self.aVars.widthSpacing = round(((1:self.aVars.numStepsWidth)-0.5)*self.aVars.stepWidth);
+            
+            [sr, sc] = meshgrid(self.aVars.heightSpacing, self.aVars.widthSpacing);
+            [imc, imr] = meshgrid(1:imsize(2), 1:imsize(1));
+            
+            cform = makecform('srgb2lab');
+            lab = double(applycform(rgb,cform));
+            
+            clustNum = 1;
+            for r = self.aVars.heightSpacing
+                for c = self.aVars.widthSpacing
+                    self.aVars.clust(clustNum) = Pixel(clustNum,r,c,lab(r,c,1:3), self.aVars.S*[1 1]);
+                    clustNum = clustNum + 1;
+                end
+            end
+            self.aVars.numClusters = clustNum - 1;
+            
+            %% Initialize the assignment variables and other intermediate variables
+            self.aVars.labels = zeros(imsize(1:2));
+            self.aVars.distance = inf(imsize(1:2));
+            self.aVars.E = 0;
+            self.aVars.startingEnergy = inf;
+            self.aVars.energy = 0;
+            self.aVars.previousEnergy = inf;
+        end
+        
+        
         function Simulate(self)
             
 %             mov = VideoWriter('temp.avi');
@@ -177,8 +232,65 @@ classdef Simulator < handle
                 if ~ishandle(self.HD.MainView)
                     break
                 end
+                
+                %% Grab the image and convert to lab
+                rgb = getframe(self.HD.MainView);
+                rgb = rgb.cdata;
+                cform = makecform('srgb2lab');
+                lab = double(applycform(rgb,cform));
+                
+                %% Perform the Super Pixel Segmentation
+                for m = 1:10
+                    % Loop over each cluster center Ck
+                    for p = 1:self.aVars.numClusters
+                        dmat = self.aVars.clust(p).calcDistanceMatrix(lab);
+                        ind = dmat < self.aVars.distance;
+                        self.aVars.distance(ind) = dmat(ind);
+                        self.aVars.labels(ind) = self.aVars.clust(p).pixelNumber;        
+                    end
+                    energy = sum(self.aVars.distance(:));
+                    fprintf('StartE = %g, PrevE = %g, CurrE = %g\n', self.aVars.startingEnergy, self.aVars.previousEnergy, energy)
+
+                    % Compute the new residual error 
+                    if isinf(self.aVars.startingEnergy)
+                        self.aVars.startingEnergy = energy;
+                    elseif ((self.aVars.previousEnergy - energy) < 1e-5 * (self.aVars.startingEnergy - energy))
+                        break
+                    end
+                    self.aVars.previousEnergy = energy;
+
+                    % Compute new cluster centers
+                    for p = 1:self.aVars.numClusters
+                        self.aVars.clust(p).Update(self.aVars.labels == p);
+                    end
+                end
+
+                for m = 1:self.aVars.numClusters
+                    self.aVars.clust(m).UpdateHistory();
+                end
+                
+                %% Display the segmentation
+                
+                newlabels = self.aVars.labels;
+                mask = imdilate(newlabels,ones(3,3)) > imerode(newlabels,ones(3,3));
+
+                r = rgb(:,:,1);
+                g = rgb(:,:,2);
+                b = rgb(:,:,3);
+                r(mask) = 255;
+                g(mask) = 255;
+                b(mask) = 255;
+                partialIm = cat(3,r,g,b);
+
+                figure(self.hResultsWindow);
+                cla
+                imshow(uint8(partialIm)); hold on,
+                title(sprintf('Frame %d', n))
+                
+                %% Update the vehicle/dynamics/scene simulation
+                figure(self.hFigure);
                 posvec = [n self.RoadParams.laneWidth*sin(n/25) + 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
-                targvec = posvec + self.DriverParams.lookAheadDistance*[1 0*self.RoadParams.laneWidth/25*cos(n/25) 0];
+                targvec = posvec + self.DriverParams.lookAheadDistance/4*[1 self.RoadParams.laneWidth/25*cos(n/25) 0] - [0 0 .75];
                 campos(posvec);
                 camtarget(targvec);
 
