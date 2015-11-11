@@ -43,6 +43,7 @@ classdef Simulator < handle
                               ...'Units', 'normalized',...
                               ...'Position', [0.0 0.0 0.75 0.75],...
                               'Visible', 'off',...
+                              'Renderer', 'opengl',...
                               'defaultSurfaceEdgeColor', 'none',...
                               'defaultPatchEdgeColor', 'none');
             
@@ -70,7 +71,8 @@ classdef Simulator < handle
 %                 set(gca, 'xlim', [-10 500], 'ylim', [-10000 10000], 'zlim', [-10000, 10000]);   
             else
 %                 camva(45)
-                camva(60)
+                camva(20)
+%                 camva(60)
             end
 
             %% Make the GUI ready for viewing
@@ -86,8 +88,8 @@ classdef Simulator < handle
         function MakeWindow(self)
             self.HD.MainView = axes('Parent', self.hFigure');
             
-            imsize = [1 1 512 512];
-%             imsize = [1 1 640 480];
+%             imsize = [1 1 512 512];
+            imsize = [1 1 640 480];
 %             imsize = [1 1 800 600];
 %             imsize = [1 1 1024 768];
 %             imsize = [1 1 1280 960];
@@ -102,7 +104,7 @@ classdef Simulator < handle
                 'Position', imsize)
             
             axis(self.HD.MainView, 'image');
-            axis(self.HD.MainView, 'off');
+%             axis(self.HD.MainView, 'off');
 
             xlabel('Down Range (m)');
             ylabel('Cross Range (m)');
@@ -179,46 +181,6 @@ classdef Simulator < handle
         function InitializeAlgorithm(self)
             self.hResultsWindow = figure;
             
-            rgb = getframe(self.HD.MainView);
-            rgb = rgb.cdata;
-            imsize = size(rgb);
-            self.aVars.imsize = imsize;
-            
-            self.aVars.k = 200;                                             % # of superpixels
-            self.aVars.N = prod(imsize(1:2));                    % # of pixels
-            self.aVars.S = sqrt(self.aVars.N/self.aVars.k);                 % # pixels / superpixel
-            
-            self.aVars.numStepsHeight = ceil(imsize(1)/self.aVars.S);
-            self.aVars.stepHeight = imsize(1)/self.aVars.numStepsHeight;
-            
-            self.aVars.numStepsWidth = ceil(imsize(2)/self.aVars.S);
-            self.aVars.stepWidth = imsize(2)/self.aVars.numStepsWidth;
-            
-            self.aVars.heightSpacing = round(((1:self.aVars.numStepsHeight)-0.5)*self.aVars.stepHeight);
-            self.aVars.widthSpacing = round(((1:self.aVars.numStepsWidth)-0.5)*self.aVars.stepWidth);
-            
-            [sr, sc] = meshgrid(self.aVars.heightSpacing, self.aVars.widthSpacing);
-            [imc, imr] = meshgrid(1:imsize(2), 1:imsize(1));
-            
-            cform = makecform('srgb2lab');
-            lab = double(applycform(rgb,cform));
-            
-            clustNum = 1;
-            for r = self.aVars.heightSpacing
-                for c = self.aVars.widthSpacing
-                    self.aVars.clust(clustNum) = Pixel(clustNum,r,c,lab(r,c,1:3), self.aVars.S*[1 1]);
-                    clustNum = clustNum + 1;
-                end
-            end
-            self.aVars.numClusters = clustNum - 1;
-            
-            %% Initialize the assignment variables and other intermediate variables
-            self.aVars.labels = zeros(imsize(1:2));
-            self.aVars.distance = inf(imsize(1:2));
-            self.aVars.E = 0;
-            self.aVars.startingEnergy = inf;
-            self.aVars.energy = 0;
-            self.aVars.previousEnergy = inf;
         end
         
         
@@ -227,10 +189,71 @@ classdef Simulator < handle
 %             mov = VideoWriter('temp.avi');
 %             open(mov);
             
-            % For 25m x #cars, take 1m steps
-            for n = 1:25*(self.SimulationParams.numCars+1)
+            % For a car traveling at 20m/s (~45mph) it will take ~80sec to
+            % travel 1 mile
+            % 
+            delT = 1/8;
+            initializeSP = true;
+            for t = 15%:delT:80
                 if ~ishandle(self.HD.MainView)
                     break
+                end
+                %% Update the vehicle/dynamics/scene simulation
+                figure(self.hFigure);
+                posvec = [t self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
+                targvec = posvec + self.DriverParams.lookAheadDistance*[1 self.RoadParams.laneWidth/25*cos(t/25) 0];
+                campos(posvec);
+                camtarget(targvec);
+
+%                 im = getframe(self.HD.MainView);
+%                 
+%                 writeVideo(mov, im.cdata);
+                pause(0.1), drawnow
+                
+                if initializeSP
+                    initializeSP = false;
+                    
+                    %% Initialize SP
+                    rgb = getframe(self.HD.MainView);
+                    rgb = rgb.cdata;
+                    imsize = size(rgb);
+                    self.aVars.imsize = imsize;
+
+                    self.aVars.k = 400;                                             % # of superpixels
+                    self.aVars.N = prod(imsize(1:2));                    % # of pixels
+                    self.aVars.S = sqrt(self.aVars.N/self.aVars.k);                 % # pixels / superpixel
+
+                    self.aVars.numStepsHeight = ceil(imsize(1)/self.aVars.S);
+                    self.aVars.stepHeight = imsize(1)/self.aVars.numStepsHeight;
+
+                    self.aVars.numStepsWidth = ceil(imsize(2)/self.aVars.S);
+                    self.aVars.stepWidth = imsize(2)/self.aVars.numStepsWidth;
+
+                    self.aVars.heightSpacing = round(((1:self.aVars.numStepsHeight)-0.5)*self.aVars.stepHeight);
+                    self.aVars.widthSpacing = round(((1:self.aVars.numStepsWidth)-0.5)*self.aVars.stepWidth);
+
+%                     [sr, sc] = meshgrid(self.aVars.heightSpacing, self.aVars.widthSpacing);
+%                     [imc, imr] = meshgrid(1:imsize(2), 1:imsize(1));
+
+                    cform = makecform('srgb2lab');
+                    lab = double(applycform(rgb,cform));
+
+                    clustNum = 1;
+                    for r = self.aVars.heightSpacing
+                        for c = self.aVars.widthSpacing
+                            self.aVars.clust(clustNum) = Pixel(clustNum,r,c,lab(r,c,1:3), self.aVars.S*[1 1]);
+                            clustNum = clustNum + 1;
+                        end
+                    end
+                    self.aVars.numClusters = clustNum - 1;
+
+                    %% Initialize the assignment variables and other intermediate variables
+                    self.aVars.labels = zeros(imsize(1:2));
+                    self.aVars.distance = inf(imsize(1:2));
+                    self.aVars.E = 0;
+                    self.aVars.startingEnergy = inf;
+                    self.aVars.energy = 0;
+                    self.aVars.previousEnergy = inf;
                 end
                 
                 %% Grab the image and convert to lab
@@ -285,19 +308,9 @@ classdef Simulator < handle
                 figure(self.hResultsWindow);
                 cla
                 imshow(uint8(partialIm)); hold on,
-                title(sprintf('Frame %d', n))
+                title(sprintf('Time %0.2f', t))
                 
-                %% Update the vehicle/dynamics/scene simulation
-                figure(self.hFigure);
-                posvec = [n self.RoadParams.laneWidth*sin(n/25) + 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
-                targvec = posvec + self.DriverParams.lookAheadDistance/4*[1 self.RoadParams.laneWidth/25*cos(n/25) 0] - [0 0 .75];
-                campos(posvec);
-                camtarget(targvec);
-
-%                 im = getframe(self.HD.MainView);
                 
-%                 writeVideo(mov, im.cdata);
-                pause(0.1), drawnow
             end
 %             close(mov)
         end
