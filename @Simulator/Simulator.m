@@ -11,6 +11,9 @@ classdef Simulator < handle
         SceneObjects
         StaticObjects
         MovingObjects
+        
+%         MakeVideo = true;
+        MakeVideo = false;
     end
     
     properties(Constant)
@@ -93,6 +96,8 @@ classdef Simulator < handle
 %             imsize = [1 1 800 600];
 %             imsize = [1 1 1024 768];
 %             imsize = [1 1 1280 960];
+            
+            self.aVars.imsize = imsize(3:4);
             
             set(self.HD.MainView,...
                 'Color', 'c',...
@@ -181,20 +186,30 @@ classdef Simulator < handle
         function InitializeAlgorithm(self)
             self.hResultsWindow = figure;
             
+            %% Initilize the Monte-Carlo Tracker(MCT)
+            self.aVars.numSamples = 1000;
+            
+            % Uniformly sample the size of the image
+            prior.samples = rand(self.aVars.numSamples, 2)*diag(self.aVars.imsize(:));
+            prior.mean = mean(prior.samples, 1);
+            temp = bsxfun(@minus, prior.mean, prior.samples);
+            prior.var = std(temp(:));
+            self.aVars.prior = prior;
         end
         
-        
         function Simulate(self)
-            
-%             mov = VideoWriter('temp.avi');
-%             open(mov);
+            delT = 1/8;
+            if self.MakeVideo
+                mov = VideoWriter('Hough.avi');
+                mov.FrameRate = round(1/delT);
+                open(mov);
+            end
             
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
             % 
-            delT = 1/8;
-            initializeSP = true;
-            for t = 15%:delT:80
+            
+            for t = 0:delT:80
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -204,115 +219,98 @@ classdef Simulator < handle
                 targvec = posvec + self.DriverParams.lookAheadDistance*[1 self.RoadParams.laneWidth/25*cos(t/25) 0];
                 campos(posvec);
                 camtarget(targvec);
-
-%                 im = getframe(self.HD.MainView);
-%                 
-%                 writeVideo(mov, im.cdata);
-                pause(0.1), drawnow
                 
-                if initializeSP
-                    initializeSP = false;
-                    
-                    %% Initialize SP
-                    rgb = getframe(self.HD.MainView);
-                    rgb = rgb.cdata;
-                    imsize = size(rgb);
-                    self.aVars.imsize = imsize;
+                control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
 
-                    self.aVars.k = 400;                                             % # of superpixels
-                    self.aVars.N = prod(imsize(1:2));                    % # of pixels
-                    self.aVars.S = sqrt(self.aVars.N/self.aVars.k);                 % # pixels / superpixel
-
-                    self.aVars.numStepsHeight = ceil(imsize(1)/self.aVars.S);
-                    self.aVars.stepHeight = imsize(1)/self.aVars.numStepsHeight;
-
-                    self.aVars.numStepsWidth = ceil(imsize(2)/self.aVars.S);
-                    self.aVars.stepWidth = imsize(2)/self.aVars.numStepsWidth;
-
-                    self.aVars.heightSpacing = round(((1:self.aVars.numStepsHeight)-0.5)*self.aVars.stepHeight);
-                    self.aVars.widthSpacing = round(((1:self.aVars.numStepsWidth)-0.5)*self.aVars.stepWidth);
-
-%                     [sr, sc] = meshgrid(self.aVars.heightSpacing, self.aVars.widthSpacing);
-%                     [imc, imr] = meshgrid(1:imsize(2), 1:imsize(1));
-
-                    cform = makecform('srgb2lab');
-                    lab = double(applycform(rgb,cform));
-
-                    clustNum = 1;
-                    for r = self.aVars.heightSpacing
-                        for c = self.aVars.widthSpacing
-                            self.aVars.clust(clustNum) = Pixel(clustNum,r,c,lab(r,c,1:3), self.aVars.S*[1 1]);
-                            clustNum = clustNum + 1;
-                        end
-                    end
-                    self.aVars.numClusters = clustNum - 1;
-
-                    %% Initialize the assignment variables and other intermediate variables
-                    self.aVars.labels = zeros(imsize(1:2));
-                    self.aVars.distance = inf(imsize(1:2));
-                    self.aVars.E = 0;
-                    self.aVars.startingEnergy = inf;
-                    self.aVars.energy = 0;
-                    self.aVars.previousEnergy = inf;
-                end
-                
-                %% Grab the image and convert to lab
+                %% Grab the image
                 rgb = getframe(self.HD.MainView);
                 rgb = rgb.cdata;
-                cform = makecform('srgb2lab');
-                lab = double(applycform(rgb,cform));
                 
-                %% Perform the Super Pixel Segmentation
-                for m = 1:10
-                    % Loop over each cluster center Ck
-                    for p = 1:self.aVars.numClusters
-                        dmat = self.aVars.clust(p).calcDistanceMatrix(lab);
-                        ind = dmat < self.aVars.distance;
-                        self.aVars.distance(ind) = dmat(ind);
-                        self.aVars.labels(ind) = self.aVars.clust(p).pixelNumber;        
-                    end
-                    energy = sum(self.aVars.distance(:));
-                    fprintf('StartE = %g, PrevE = %g, CurrE = %g\n', self.aVars.startingEnergy, self.aVars.previousEnergy, energy)
-
-                    % Compute the new residual error 
-                    if isinf(self.aVars.startingEnergy)
-                        self.aVars.startingEnergy = energy;
-                    elseif ((self.aVars.previousEnergy - energy) < 1e-5 * (self.aVars.startingEnergy - energy))
-                        break
-                    end
-                    self.aVars.previousEnergy = energy;
-
-                    % Compute new cluster centers
-                    for p = 1:self.aVars.numClusters
-                        self.aVars.clust(p).Update(self.aVars.labels == p);
+                %% Perform edge detection
+                greyim = double(rgb2gray(rgb));
+                edges.cdata = edge(greyim, 'canny'); % More lines
+        %         edges.cdata = edge(greyim, 'sobel'); % Less lines
+                edges.colomap = [];
+                imedge = edges.cdata;
+                
+                %% Compute the Hough Transfrom to create the line segments
+                lines = self.computeHough(imedge);
+                
+                %% Compute the intercept points
+                % Create the A and b matrix
+                numLines = length(lines);
+                A = zeros(numLines, 2);
+                b = zeros(numLines, 1);
+                toDelete = [];
+                for l = 1:numLines
+                    A(l, :) = [-tan(lines(l).plottheta) 1];
+                    b(l) = A(l, :)*lines(l).point1(:);
+                    if isnan(A(l,1))
+                        toDelete(end+1) = l;
                     end
                 end
+                A(toDelete, :) = [];
+                b(toDelete) = [];
+                if isempty(A)
+                    % No lines were computed this frame.
+                    continue
+                end
 
-                for m = 1:self.aVars.numClusters
-                    self.aVars.clust(m).UpdateHistory();
+                if size(A, 1) < 2
+                    disp('Not enough lines to deterimine intersections')
+                    continue
+                end
+
+                % Calculate the intercept points
+                pts = self.findVert(A, b);
+                if isempty(pts)
+                    disp('No intersections found')
+                    continue
                 end
                 
-                %% Display the segmentation
+                %% Update the tracker
+                temp = isnan(pts(1:2,:));
+                pts(:, temp(1,:) | temp(2,:)) = [];
+                measurements = pts(1:2,:)';
+                posterior = self.monteCarloTracker_step(self.aVars.prior, control, measurements, self.aVars.imsize);       
                 
-                newlabels = self.aVars.labels;
-                mask = imdilate(newlabels,ones(3,3)) > imerode(newlabels,ones(3,3));
-
-                r = rgb(:,:,1);
-                g = rgb(:,:,2);
-                b = rgb(:,:,3);
-                r(mask) = 255;
-                g(mask) = 255;
-                b(mask) = 255;
-                partialIm = cat(3,r,g,b);
-
+                % The new posterior becomes the prior.
+                self.aVars.prior = posterior;
+                
+                %% Update the results display
+                % Copy the current image to the results window
                 figure(self.hResultsWindow);
-                cla
-                imshow(uint8(partialIm)); hold on,
+                ax = gca(self.hResultsWindow);
+                cla(ax)
+                imshow(rgb, 'Parent', ax); hold on,
                 title(sprintf('Time %0.2f', t))
                 
+                % Draw the Hough lines
+                for l = 1:numLines
+                    x = lines(l).point1(1) + cos(lines(l).plottheta)*[-10000 0 10000];
+                    y = lines(l).point1(2) + sin(lines(l).plottheta)*[-10000 0 10000];
+
+                    plot(ax, x, y, 'm', 'xliminclude', 'off', 'yliminclude', 'off')
+                end
                 
+                % Display the intesections
+                plot(ax, pts(1,:), pts(2,:), 'cx', 'markersize', 10, 'linewidth', 3)
+%                 plot(ax, mean(pts(1,:)), mean(pts(2,:)), 'mo', 'markersize', 10, 'linewidth', 2)
+                
+                % Display the vanishing point
+                plot(ax, posterior.samples(:,1), posterior.samples(:,2), 'y.')
+                plot(ax, posterior.mean(1), posterior.mean(2), 'gs', 'linewidth', 2);
+                               
+                %% Store the results window in a video
+                if self.MakeVideo
+                    im = getframe(ax);
+                    writeVideo(mov, im.cdata);
+                end                
+                drawnow
             end
-%             close(mov)
+            if self.MakeVideo
+                close(mov)
+            end
         end
     end
     
@@ -422,5 +420,125 @@ classdef Simulator < handle
         end
     end
     
+    %% Methods for the MCT
+    methods(Static)
+        function lines = computeHough(edges)
+    
+    % Perform the Hough transform
+    [H,T,R] = hough(edges);
+    
+    % Find the peaks in the Hough transform accumulator matrix
+    % corresponding to the line estimates
+    P  = houghpeaks(H,5,'threshold',ceil(0.3*max(H(:))));
+
+    % Find the equations fo the lines
+    lines = houghlines(edges,T,R,P,'FillGap',.25*min(size(edges)),'MinLength',7);
+    for k = 1:length(lines)
+        xy = [lines(k).point1; lines(k).point2];
+        xydiff = diff(xy, 1);
+        lines(k).plottheta = atan2(xydiff(2), xydiff(1));
+    end
+
+end
+
+        function pts = findVert(A, b)
+            pts = [];
+
+            [numConstraints, numVariables] = size(A);
+
+            % If num constraints > num variables
+            if numConstraints > numVariables
+                A = [A eye(numConstraints)];
+                [numConstraints, numVariables] = size(A);
+            end
+
+            ind = nchoosek(1:numVariables, numConstraints);
+            % Ignore combinations that don't use the first two variables
+            temp = (ind == 1 | ind == 2);
+            ind(~(temp(:,1) & temp(:,2)), :) = [];
+
+            numCombinations = size(ind, 1);%nchoosek(n,m);
+            for k = 1:numCombinations
+                y = zeros(numVariables,1);
+                % Solve the eqution using the current set of variables
+                x = A(:,ind(k,:))\b;
+                if all(isinf(x) | isnan(x))
+                    % Ingore parallel lines
+                    continue
+                end
+
+                % Store the values into the proper indicies
+                y(ind(k,:)) = x;
+                pts = [pts y];
+            end
+        end
+
+        function posterior = monteCarloTracker_step(prior, control, measurement, imsize)
+            pixelVar = 2; % # pixels
+
+            [numSamples numDimensions] = size(prior.samples);
+            trueNumSamples = numSamples;
+
+            % Apply the control to each sample 
+            prediction = bsxfun(@plus, prior.samples, control);
+
+            % Compare the observation to our prediction. This is how different the
+            % measurement and samples are.
+            numMeas = size(measurement, 1);
+            Innovation = nan(numSamples, numDimensions, numMeas);
+            for m = 1:numMeas
+                Innovation(:,:,m) = bsxfun(@minus, measurement(m,:), prediction);
+            end
+
+            % Compute the new liklihood using gaussian distribution
+            % exp(-1/2*(x-mu)'*sig^-1*(x-mu))
+            L = ones(numSamples, numMeas) / numSamples;
+            varInv = 1/prior.var^2*eye(numDimensions);
+            for m = 1:numMeas
+                for s = 1:numSamples
+                    L(s,m) = exp(-0.5*Innovation(s,:,m)*varInv*Innovation(s,:,m)');
+                end
+            end
+            L = sum(L, 2);
+
+            % Update the distribution
+            CDF = cumsum(L)/sum(L);
+            if any(diff(CDF) == 0)
+                inds = diff(CDF) == 0;
+                CDF(inds) = [];
+                prediction(inds,:) = [];
+                numSamples = size(prediction, 1);
+            end
+
+            if any(L)
+                % Draw the samples from prediction distribution based on the
+                % weights
+                newSamplesIndex = interp1(CDF, 1:numSamples, rand(trueNumSamples, 1), 'nearest', 'extrap');
+                posterior.samples = prediction(newSamplesIndex, :) + pixelVar*randn(trueNumSamples, numDimensions);
+                posterior.sampleIndex = newSamplesIndex;
+                posterior.mean = mean(posterior.samples, 1);
+                temp = bsxfun(@minus, posterior.mean, posterior.samples);
+                posterior.var = std(temp(:));
+            else
+                % The weight for all samples is zero. I.E. the innovation is too
+                % small to be usefull.
+                % Resample using the current mean to create variations.
+                disp('RESAMPLING')
+                % Have to resample the distribution
+                posterior.mean = mean(prediction, 1);
+        %         posterior.var = .0125;
+        %         posterior.var = .00125;
+                posterior.var = 2*pixelVar;
+                posterior.samples = bsxfun(@plus, randn(numSamples, numDimensions)*posterior.var, posterior.mean);        
+            end
+
+        end
+
+        function y = wrapToPi(x)
+            % Makes x between [-pi pi]
+            y = mod(x, sign(x)*2*pi);
+            y(abs(y)>pi) = y(abs(y)>pi) - sign(y(abs(y)>pi))*2*pi;
+        end
+    end
     
 end
