@@ -14,6 +14,8 @@ classdef Simulator < handle
         
 %         MakeVideo = true;
         MakeVideo = false;
+        
+        Lighting
     end
     
     properties(Constant)
@@ -121,34 +123,34 @@ classdef Simulator < handle
         function CreateScene(self)
             %% Draw the ground plane
             [x,y,z] = self.Ground(self.SimulationDistance);
-            self.SceneObjects.Ground = patch(x, y, z, [0 0.5 0]);
+            self.SceneObjects.Ground = patch(x, y, z, [0 0.5 0], 'UserData', [0 0.5 0]);
             
             %% Draw the background plane
             [x,y,z] = self.Background(self.SimulationDistance);
-            self.SceneObjects.Background = patch(x, y, z, [0 0.5 0.75]);
+            self.SceneObjects.Background = patch(x, y, z, [0 0.5 0.75], 'UserData', [0 0.5 0.75]);
             
             %% Draw the roadway
             [x,y,z] = self.Road(self.SimulationDistance, self.RoadParams);
-            self.SceneObjects.Road = patch(x, y, z, self.RoadParams.roadColor);
-            self.SceneObjects.OpposingRoad = patch(x, -y, z, self.RoadParams.roadColor);
+            self.SceneObjects.Road = patch(x, y, z, self.RoadParams.roadColor, 'UserData', self.RoadParams.roadColor);
+            self.SceneObjects.OpposingRoad = patch(x, -y, z, self.RoadParams.roadColor, 'UserData', self.RoadParams.roadColor);
             
             %% Draw the lane markings
             % Double yellow centerline Markings
             [x,y,z] = self.SolidLaneMarkings(self.SimulationDistance, self.RoadParams);
-            self.SceneObjects.LaneMarkings(1) = patch(x, y+.25*self.RoadParams.laneMarkerWidth, z, [1 1 0]);
-            self.SceneObjects.LaneMarkings(end+1) = patch(x, -y-.25*self.RoadParams.laneMarkerWidth, z, [1 1 0]);
+            self.SceneObjects.LaneMarkings(1) = patch(x, y+.25*self.RoadParams.laneMarkerWidth, z, [1 1 0], 'UserData', [1 1 0]);
+            self.SceneObjects.LaneMarkings(end+1) = patch(x, -y-.25*self.RoadParams.laneMarkerWidth, z, [1 1 0], 'UserData', [1 1 0]);
             
             % Dashed white lines
             [x,y,z] = self.DashedLaneMarkings(self.SimulationDistance, self.RoadParams);
             for n = 1:(self.RoadParams.numLanes-1)
-                self.SceneObjects.LaneMarkings(end+1) = patch(x, y + n*self.RoadParams.laneWidth - self.RoadParams.laneMarkerWidth/2, z, self.RoadParams.laneColor);
-                self.SceneObjects.LaneMarkings(end+1) = patch(x, -(y + n*self.RoadParams.laneWidth - self.RoadParams.laneMarkerWidth/2), z, self.RoadParams.laneColor);
+                self.SceneObjects.LaneMarkings(end+1) = patch(x, y + n*self.RoadParams.laneWidth - self.RoadParams.laneMarkerWidth/2, z, self.RoadParams.laneColor, 'UserData', self.RoadParams.laneColor);
+                self.SceneObjects.LaneMarkings(end+1) = patch(x, -(y + n*self.RoadParams.laneWidth - self.RoadParams.laneMarkerWidth/2), z, self.RoadParams.laneColor, 'UserData', self.RoadParams.laneColor);
             end
             
             % Solid white edge lines
             [x,y,z] = self.SolidLaneMarkings(self.SimulationDistance, self.RoadParams);
-            self.SceneObjects.LaneMarkings(end+1) = patch(x, y + (n+1)*self.RoadParams.laneWidth - self.RoadParams.laneMarkerWidth/2, z, self.RoadParams.laneColor);
-            self.SceneObjects.LaneMarkings(end+1) = patch(x, -(y + (n+1)*self.RoadParams.laneWidth - self.RoadParams.laneMarkerWidth/2), z, self.RoadParams.laneColor);
+            self.SceneObjects.LaneMarkings(end+1) = patch(x, y + (n+1)*self.RoadParams.laneWidth - self.RoadParams.laneMarkerWidth/2, z, self.RoadParams.laneColor, 'UserData', self.RoadParams.laneColor);
+            self.SceneObjects.LaneMarkings(end+1) = patch(x, -(y + (n+1)*self.RoadParams.laneWidth - self.RoadParams.laneMarkerWidth/2), z, self.RoadParams.laneColor, 'UserData', self.RoadParams.laneColor);
             
         end
         
@@ -169,14 +171,16 @@ classdef Simulator < handle
             carlane = randi(self.RoadParams.numLanes,1,self.SimulationParams.numCars)-1;
 %             carlane = [2 0 1 1];
             for n = 1:self.SimulationParams.numCars
-                self.MovingObjects.Cars(n) = surface(x + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color);
+                self.MovingObjects.Cars(n) = surface(x + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
             end
             
         end
         
         function CreateLighting(self)
+            count = 1;
             for n = 0:500:self.SimulationDistance
-                light('Position', [n, 0 -2000])
+                self.Lighting(count) = light('Position', [n, 0 -2000]);
+                count = count+1;
             end
         end
     end
@@ -188,6 +192,7 @@ classdef Simulator < handle
             
             %% Initilize the Monte-Carlo Vanishing Point Tracker(MCVPT)
             self.aVars.VPTracker = VPTracker(1000, self.aVars.imsize);
+            
         end
         
         function Simulate(self)
@@ -219,12 +224,72 @@ classdef Simulator < handle
                 control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
                 self.aVars.VPTracker.Update(rgb, control);
                 
+                %% Do color thresholding to locate and classify the road/obstacles
+%                 % Turn off the lights to get the correct coloring
+%                 set(self.Lighting, 'Visible', 'off');
+%                 gtRGB = getframe(self.HD.MainView);
+%                 gtRGB = gtRGB.cdata;
+%                 
+%                 % Compare the image to the color labels
+%                 objectRGBIDs = [0 128 0;                    % Ground/Grass
+%                                 0 128 191;                  % Sky
+%                                 26 26 26;                   % Road
+%                                 255 255 255;                % White lane markers
+%                                 198 198 0;                  % Yellow lane markers
+%                                 128 0 0;                    % Car/obstacles
+%                                 [92 64 51];                 % Tree trunk
+%                                 [25 50 25];                 % Tree top
+%                                 ];
+%                             
+%                 labels = zeros(fliplr(self.aVars.imsize));
+%                 for n = 1:size(objectRGBIDs,1)
+%                     dC = bsxfun(@minus, double(gtRGB), reshape(objectRGBIDs(n,:), 1, 1, 3));
+%                     dist = sqrt(sum(dC.*dC, 3));
+%                     labels(dist < 10) = n;
+%                 end
+%
+%                 % Turn the lights back on
+%                 set(self.Lighting, 'Visible', 'on');
+
+                % Change all the colors to black and look for things not
+                % black
+                 partOrder = ...
+                    {'self.SceneObjects.Ground'
+                     'self.SceneObjects.Background'
+                     'self.SceneObjects.Road'
+                     'self.SceneObjects.OpposingRoad'
+                     '[self.SceneObjects.LaneMarkings(:)]'
+                     'self.MovingObjects.Cars'
+                     '[self.StaticObjects.Trees(:).top]'
+                     '[self.StaticObjects.Trees(:).trunk]'
+                     };
+
+                for n = 1:length(partOrder)
+                    eval(sprintf('self.MakeBlack(%s);', partOrder{n}));
+                end
+                
+                % Turn back on features to get the label mapping
+                labels = zeros(fliplr(self.aVars.imsize));
+               
+                try
+                    for n = 1:length(partOrder)
+                        eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
+                        gtRGB = getframe(self.HD.MainView);
+                        labels(rgb2gray(gtRGB.cdata)>3) = n;
+                        eval(sprintf('self.MakeBlack(%s);', partOrder{n}));  
+                    end
+                    for n = 1:length(partOrder)
+                        eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
+                    end
+                end
+                
                 %% Update the results display
                 % Copy the current image to the results window
                 figure(self.hResultsWindow);
                 ax = gca(self.hResultsWindow);
                 cla(ax)
-                imshow(rgb, 'Parent', ax); hold on,
+%                 imshow(rgb, 'Parent', ax); hold on,
+                imagesc(labels, 'Parent', ax); hold on,
                 title(sprintf('Time %0.2f', t))
                
                 % Draw the VP Results
@@ -344,8 +409,32 @@ classdef Simulator < handle
                     0.9144*bz;   % 3ft      
                     4.572*bz];   % 15ft
                   
-            h.trunk = surface(trunkx + x, trunky + y, trunkz, 'FaceColor', [92 64 51]/255);
-            h.top = surface(topx + x, topy + y, topz, 'FaceColor', [25 50 25]/255);
+            h.trunk = surface(trunkx + x, trunky + y, trunkz, 'FaceColor', [92 64 51]/255, 'UserData', [92 64 51]/255);
+            h.top = surface(topx + x, topy + y, topz, 'FaceColor', [25 50 25]/255, 'UserData', [25 50 25]/255);
+        end
+        
+        % Color change static properties
+        function MakeBlack(h)
+            try
+                set(h, 'Color', [0 0 0]);
+            catch
+                set(h, 'FaceColor', [0 0 0]);
+            end
+        end
+        
+        function RestoreColor(h)
+            color = get(h, 'UserData');
+            try
+                set(h, 'Color', color);
+            catch
+                if length(h) > 1
+                    for n = 1:length(h)
+                        set(h(n), 'FaceColor', color{n})
+                    end
+                else
+                    set(h, 'FaceColor', color);
+                end
+            end
         end
     end
 end
