@@ -186,15 +186,8 @@ classdef Simulator < handle
         function InitializeAlgorithm(self)
             self.hResultsWindow = figure;
             
-            %% Initilize the Monte-Carlo Tracker(MCT)
-            self.aVars.numSamples = 1000;
-            
-            % Uniformly sample the size of the image
-            prior.samples = rand(self.aVars.numSamples, 2)*diag(self.aVars.imsize(:));
-            prior.mean = mean(prior.samples, 1);
-            temp = bsxfun(@minus, prior.mean, prior.samples);
-            prior.var = std(temp(:));
-            self.aVars.prior = prior;
+            %% Initilize the Monte-Carlo Vanishing Point Tracker(MCVPT)
+            self.aVars.VPTracker = VPTracker(1000, self.aVars.imsize);
         end
         
         function Simulate(self)
@@ -207,8 +200,6 @@ classdef Simulator < handle
             
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
-            % 
-            
             for t = 0:delT:80
                 if ~ishandle(self.HD.MainView)
                     break
@@ -219,63 +210,14 @@ classdef Simulator < handle
                 targvec = posvec + self.DriverParams.lookAheadDistance*[1 self.RoadParams.laneWidth/25*cos(t/25) 0];
                 campos(posvec);
                 camtarget(targvec);
-                
-                control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
 
                 %% Grab the image
                 rgb = getframe(self.HD.MainView);
                 rgb = rgb.cdata;
                 
-                %% Perform edge detection
-                greyim = double(rgb2gray(rgb));
-                edges.cdata = edge(greyim, 'canny'); % More lines
-        %         edges.cdata = edge(greyim, 'sobel'); % Less lines
-                edges.colomap = [];
-                imedge = edges.cdata;
-                
-                %% Compute the Hough Transfrom to create the line segments
-                lines = self.computeHough(imedge);
-                
-                %% Compute the intercept points
-                % Create the A and b matrix
-                numLines = length(lines);
-                A = zeros(numLines, 2);
-                b = zeros(numLines, 1);
-                toDelete = [];
-                for l = 1:numLines
-                    A(l, :) = [-tan(lines(l).plottheta) 1];
-                    b(l) = A(l, :)*lines(l).point1(:);
-                    if isnan(A(l,1))
-                        toDelete(end+1) = l;
-                    end
-                end
-                A(toDelete, :) = [];
-                b(toDelete) = [];
-                if isempty(A)
-                    % No lines were computed this frame.
-                    continue
-                end
-
-                if size(A, 1) < 2
-                    disp('Not enough lines to deterimine intersections')
-                    continue
-                end
-
-                % Calculate the intercept points
-                pts = self.findVert(A, b);
-                if isempty(pts)
-                    disp('No intersections found')
-                    continue
-                end
-                
-                %% Update the tracker
-                temp = isnan(pts(1:2,:));
-                pts(:, temp(1,:) | temp(2,:)) = [];
-                measurements = pts(1:2,:)';
-                posterior = self.monteCarloTracker_step(self.aVars.prior, control, measurements, self.aVars.imsize);       
-                
-                % The new posterior becomes the prior.
-                self.aVars.prior = posterior;
+                %% Update the VP Tracker
+                control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
+                self.aVars.VPTracker.Update(rgb, control);
                 
                 %% Update the results display
                 % Copy the current image to the results window
@@ -284,23 +226,10 @@ classdef Simulator < handle
                 cla(ax)
                 imshow(rgb, 'Parent', ax); hold on,
                 title(sprintf('Time %0.2f', t))
-                
-                % Draw the Hough lines
-                for l = 1:numLines
-                    x = lines(l).point1(1) + cos(lines(l).plottheta)*[-10000 0 10000];
-                    y = lines(l).point1(2) + sin(lines(l).plottheta)*[-10000 0 10000];
-
-                    plot(ax, x, y, 'm', 'xliminclude', 'off', 'yliminclude', 'off')
-                end
-                
-                % Display the intesections
-                plot(ax, pts(1,:), pts(2,:), 'cx', 'markersize', 10, 'linewidth', 3)
-%                 plot(ax, mean(pts(1,:)), mean(pts(2,:)), 'mo', 'markersize', 10, 'linewidth', 2)
-                
-                % Display the vanishing point
-                plot(ax, posterior.samples(:,1), posterior.samples(:,2), 'y.')
-                plot(ax, posterior.mean(1), posterior.mean(2), 'gs', 'linewidth', 2);
-                               
+               
+                % Draw the VP Results
+                self.aVars.VPTracker.PlotResults(ax, 0);
+               
                 %% Store the results window in a video
                 if self.MakeVideo
                     im = getframe(ax);
@@ -419,126 +348,4 @@ classdef Simulator < handle
             h.top = surface(topx + x, topy + y, topz, 'FaceColor', [25 50 25]/255);
         end
     end
-    
-    %% Methods for the MCT
-    methods(Static)
-        function lines = computeHough(edges)
-    
-    % Perform the Hough transform
-    [H,T,R] = hough(edges);
-    
-    % Find the peaks in the Hough transform accumulator matrix
-    % corresponding to the line estimates
-    P  = houghpeaks(H,5,'threshold',ceil(0.3*max(H(:))));
-
-    % Find the equations fo the lines
-    lines = houghlines(edges,T,R,P,'FillGap',.25*min(size(edges)),'MinLength',7);
-    for k = 1:length(lines)
-        xy = [lines(k).point1; lines(k).point2];
-        xydiff = diff(xy, 1);
-        lines(k).plottheta = atan2(xydiff(2), xydiff(1));
-    end
-
-end
-
-        function pts = findVert(A, b)
-            pts = [];
-
-            [numConstraints, numVariables] = size(A);
-
-            % If num constraints > num variables
-            if numConstraints > numVariables
-                A = [A eye(numConstraints)];
-                [numConstraints, numVariables] = size(A);
-            end
-
-            ind = nchoosek(1:numVariables, numConstraints);
-            % Ignore combinations that don't use the first two variables
-            temp = (ind == 1 | ind == 2);
-            ind(~(temp(:,1) & temp(:,2)), :) = [];
-
-            numCombinations = size(ind, 1);%nchoosek(n,m);
-            for k = 1:numCombinations
-                y = zeros(numVariables,1);
-                % Solve the eqution using the current set of variables
-                x = A(:,ind(k,:))\b;
-                if all(isinf(x) | isnan(x))
-                    % Ingore parallel lines
-                    continue
-                end
-
-                % Store the values into the proper indicies
-                y(ind(k,:)) = x;
-                pts = [pts y];
-            end
-        end
-
-        function posterior = monteCarloTracker_step(prior, control, measurement, imsize)
-            pixelVar = 2; % # pixels
-
-            [numSamples numDimensions] = size(prior.samples);
-            trueNumSamples = numSamples;
-
-            % Apply the control to each sample 
-            prediction = bsxfun(@plus, prior.samples, control);
-
-            % Compare the observation to our prediction. This is how different the
-            % measurement and samples are.
-            numMeas = size(measurement, 1);
-            Innovation = nan(numSamples, numDimensions, numMeas);
-            for m = 1:numMeas
-                Innovation(:,:,m) = bsxfun(@minus, measurement(m,:), prediction);
-            end
-
-            % Compute the new liklihood using gaussian distribution
-            % exp(-1/2*(x-mu)'*sig^-1*(x-mu))
-            L = ones(numSamples, numMeas) / numSamples;
-            varInv = 1/prior.var^2*eye(numDimensions);
-            for m = 1:numMeas
-                for s = 1:numSamples
-                    L(s,m) = exp(-0.5*Innovation(s,:,m)*varInv*Innovation(s,:,m)');
-                end
-            end
-            L = sum(L, 2);
-
-            % Update the distribution
-            CDF = cumsum(L)/sum(L);
-            if any(diff(CDF) == 0)
-                inds = diff(CDF) == 0;
-                CDF(inds) = [];
-                prediction(inds,:) = [];
-                numSamples = size(prediction, 1);
-            end
-
-            if any(L)
-                % Draw the samples from prediction distribution based on the
-                % weights
-                newSamplesIndex = interp1(CDF, 1:numSamples, rand(trueNumSamples, 1), 'nearest', 'extrap');
-                posterior.samples = prediction(newSamplesIndex, :) + pixelVar*randn(trueNumSamples, numDimensions);
-                posterior.sampleIndex = newSamplesIndex;
-                posterior.mean = mean(posterior.samples, 1);
-                temp = bsxfun(@minus, posterior.mean, posterior.samples);
-                posterior.var = std(temp(:));
-            else
-                % The weight for all samples is zero. I.E. the innovation is too
-                % small to be usefull.
-                % Resample using the current mean to create variations.
-                disp('RESAMPLING')
-                % Have to resample the distribution
-                posterior.mean = mean(prediction, 1);
-        %         posterior.var = .0125;
-        %         posterior.var = .00125;
-                posterior.var = 2*pixelVar;
-                posterior.samples = bsxfun(@plus, randn(numSamples, numDimensions)*posterior.var, posterior.mean);        
-            end
-
-        end
-
-        function y = wrapToPi(x)
-            % Makes x between [-pi pi]
-            y = mod(x, sign(x)*2*pi);
-            y(abs(y)>pi) = y(abs(y)>pi) - sign(y(abs(y)>pi))*2*pi;
-        end
-    end
-    
 end
