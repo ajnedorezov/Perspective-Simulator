@@ -190,8 +190,37 @@ classdef Simulator < handle
         function InitializeAlgorithm(self)
             self.hResultsWindow = figure;
             
+            imsize = self.aVars.imsize;
+            
             %% Initilize the Monte-Carlo Vanishing Point Tracker(MCVPT)
-            self.aVars.VPTracker = VPTracker(1000, self.aVars.imsize);
+            self.aVars.VPTracker = VPTracker(1000, imsize);
+            
+            %% Initialize some Birds-Eye-View (BEV) parameters
+            alpha_tot = 30*pi/180;
+            den = sqrt((imsize(2)-1)^2+(imsize(1)-1)^2);
+            alpha = atan( (imsize(2)-1)/den * tan(alpha_tot) );
+            self.aVars.BEVparams = struct('alpha', alpha,...
+                                          'CameraLocationInWorld', [0 0 1],...
+                                          'Gamma', 0,...
+                                          'Theta', 0*pi/180,...atan(0.5/20),...
+                                          'm', imsize(1),...
+                                          'n', imsize(2));
+
+            rHorizon = ceil((self.aVars.BEVparams.m-1)/(2*self.aVars.BEVparams.alpha)*(self.aVars.BEVparams.alpha-self.aVars.BEVparams.Theta)+1)+10;%-30;
+            [v,u] = meshgrid((1:imsize(2))-1, (rHorizon):imsize(1));
+            [X,Y] = ImageToWorld(v, u, self.aVars.BEVparams);
+
+            step = 0.2;
+            
+            xg = fliplr(linspace(-30, 30, imsize(1)));
+            yg = linspace(9, 120, imsize(2))';
+
+            self.aVars.BEV.rHorizon = rHorizon;
+            self.aVars.BEV.X = X;
+            self.aVars.BEV.Y = Y;
+            self.aVars.BEV.step = step;
+            self.aVars.BEV.xg = xg;
+            self.aVars.BEV.yg = yg;
             
         end
         
@@ -224,64 +253,83 @@ classdef Simulator < handle
                 control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
                 self.aVars.VPTracker.Update(rgb, control);
                 
-                %% Do color thresholding to locate and classify the road/obstacles
-%                 % Turn off the lights to get the correct coloring
-%                 set(self.Lighting, 'Visible', 'off');
-%                 gtRGB = getframe(self.HD.MainView);
-%                 gtRGB = gtRGB.cdata;
-%                 
-%                 % Compare the image to the color labels
-%                 objectRGBIDs = [0 128 0;                    % Ground/Grass
-%                                 0 128 191;                  % Sky
-%                                 26 26 26;                   % Road
-%                                 255 255 255;                % White lane markers
-%                                 198 198 0;                  % Yellow lane markers
-%                                 128 0 0;                    % Car/obstacles
-%                                 [92 64 51];                 % Tree trunk
-%                                 [25 50 25];                 % Tree top
-%                                 ];
-%                             
-%                 labels = zeros(fliplr(self.aVars.imsize));
-%                 for n = 1:size(objectRGBIDs,1)
-%                     dC = bsxfun(@minus, double(gtRGB), reshape(objectRGBIDs(n,:), 1, 1, 3));
-%                     dist = sqrt(sum(dC.*dC, 3));
-%                     labels(dist < 10) = n;
+%                 %% Do color thresholding to locate and classify the road/obstacles
+% %                 % Turn off the lights to get the correct coloring
+% %                 set(self.Lighting, 'Visible', 'off');
+% %                 gtRGB = getframe(self.HD.MainView);
+% %                 gtRGB = gtRGB.cdata;
+% %                 
+% %                 % Compare the image to the color labels
+% %                 objectRGBIDs = [0 128 0;                    % Ground/Grass
+% %                                 0 128 191;                  % Sky
+% %                                 26 26 26;                   % Road
+% %                                 255 255 255;                % White lane markers
+% %                                 198 198 0;                  % Yellow lane markers
+% %                                 128 0 0;                    % Car/obstacles
+% %                                 [92 64 51];                 % Tree trunk
+% %                                 [25 50 25];                 % Tree top
+% %                                 ];
+% %                             
+% %                 labels = zeros(fliplr(self.aVars.imsize));
+% %                 for n = 1:size(objectRGBIDs,1)
+% %                     dC = bsxfun(@minus, double(gtRGB), reshape(objectRGBIDs(n,:), 1, 1, 3));
+% %                     dist = sqrt(sum(dC.*dC, 3));
+% %                     labels(dist < 10) = n;
+% %                 end
+% %
+% %                 % Turn the lights back on
+% %                 set(self.Lighting, 'Visible', 'on');
+% 
+%                 % Change all the colors to black and look for things not
+%                 % black
+%                  partOrder = ...
+%                     {'self.SceneObjects.Ground'
+%                      'self.SceneObjects.Background'
+%                      'self.SceneObjects.Road'
+%                      'self.SceneObjects.OpposingRoad'
+%                      '[self.SceneObjects.LaneMarkings(:)]'
+%                      'self.MovingObjects.Cars'
+%                      '[self.StaticObjects.Trees(:).top]'
+%                      '[self.StaticObjects.Trees(:).trunk]'
+%                      };
+% 
+%                 for n = 1:length(partOrder)
+%                     eval(sprintf('self.MakeBlack(%s);', partOrder{n}));
 %                 end
-%
-%                 % Turn the lights back on
-%                 set(self.Lighting, 'Visible', 'on');
+%                 
+%                 % Turn back on features to get the label mapping
+%                 labels = zeros(fliplr(self.aVars.imsize));
+%                
+%                 try
+%                     for n = 1:length(partOrder)
+%                         eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
+%                         gtRGB = getframe(self.HD.MainView);
+%                         labels(rgb2gray(gtRGB.cdata)>3) = n;
+%                         eval(sprintf('self.MakeBlack(%s);', partOrder{n}));  
+%                     end
+%                     for n = 1:length(partOrder)
+%                         eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
+%                     end
+%                 end
+%                 
+                %% Apply the BEV transform
+                im = rgb;
+%                 im = labels;
 
-                % Change all the colors to black and look for things not
-                % black
-                 partOrder = ...
-                    {'self.SceneObjects.Ground'
-                     'self.SceneObjects.Background'
-                     'self.SceneObjects.Road'
-                     'self.SceneObjects.OpposingRoad'
-                     '[self.SceneObjects.LaneMarkings(:)]'
-                     'self.MovingObjects.Cars'
-                     '[self.StaticObjects.Trees(:).top]'
-                     '[self.StaticObjects.Trees(:).trunk]'
-                     };
+                % Performe the BEV transform
+                imBEV = zeros(length(self.aVars.BEV.yg), length(self.aVars.BEV.xg), size(im,3));
+                [xx,yy] = meshgrid(self.aVars.BEV.xg, self.aVars.BEV.yg);
+                for d = 1:size(im,3);
+            %         imBEV(:,:,d) = interp2(u, v, double(im(:,:,d)), X, Y);
+            %         tempIm = griddata(self.aVars.BEV.X,self.aVars.BEV.Y, double(im(self.aVars.BEV.rHorizon:end, :, d))/255, self.aVars.BEV.xg, self.aVars.BEV.yg, 'linear');
+                    interpIm = double(im(1:end, :, d))/255;
 
-                for n = 1:length(partOrder)
-                    eval(sprintf('self.MakeBlack(%s);', partOrder{n}));
+
+                    F = TriScatteredInterp(self.aVars.BEV.X(:), self.aVars.BEV.Y(:), interpIm(:));
+                    imBEV(:,:,d) = rot90(F(xx,yy),2);
                 end
-                
-                % Turn back on features to get the label mapping
-                labels = zeros(fliplr(self.aVars.imsize));
-               
-                try
-                    for n = 1:length(partOrder)
-                        eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
-                        gtRGB = getframe(self.HD.MainView);
-                        labels(rgb2gray(gtRGB.cdata)>3) = n;
-                        eval(sprintf('self.MakeBlack(%s);', partOrder{n}));  
-                    end
-                    for n = 1:length(partOrder)
-                        eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
-                    end
-                end
+
+                imBEV = uint8(imBEV*255);
                 
                 %% Update the results display
                 % Copy the current image to the results window
@@ -289,7 +337,8 @@ classdef Simulator < handle
                 ax = gca(self.hResultsWindow);
                 cla(ax)
 %                 imshow(rgb, 'Parent', ax); hold on,
-                imagesc(labels, 'Parent', ax); hold on,
+%                 imagesc(labels, 'Parent', ax); hold on,
+                imshow(imBEV, 'Parent', ax); hold on,
                 title(sprintf('Time %0.2f', t))
                
                 % Draw the VP Results
