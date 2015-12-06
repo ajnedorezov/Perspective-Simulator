@@ -99,7 +99,7 @@ classdef Simulator < handle
 %             imsize = [1 1 1024 768];
 %             imsize = [1 1 1280 960];
             
-            self.aVars.imsize = imsize(3:4);
+            self.aVars.imsize = imsize([4 3]);
             
             set(self.HD.MainView,...
                 'Color', 'c',...
@@ -200,7 +200,7 @@ classdef Simulator < handle
             den = sqrt((imsize(2)-1)^2+(imsize(1)-1)^2);
             alpha = atan( (imsize(2)-1)/den * tan(alpha_tot) );
             self.aVars.BEVparams = struct('alpha', alpha,...
-                                          'CameraLocationInWorld', [0 0 1],...
+                                          'CameraLocationInWorld', [0 0 10],...
                                           'Gamma', 0,...
                                           'Theta', 0*pi/180,...atan(0.5/20),...
                                           'm', imsize(1),...
@@ -208,12 +208,12 @@ classdef Simulator < handle
 
             rHorizon = ceil((self.aVars.BEVparams.m-1)/(2*self.aVars.BEVparams.alpha)*(self.aVars.BEVparams.alpha-self.aVars.BEVparams.Theta)+1)+10;%-30;
             [v,u] = meshgrid((1:imsize(2))-1, (rHorizon):imsize(1));
-            [X,Y] = ImageToWorld(v, u, self.aVars.BEVparams);
+            [X,Y] = self.ImageToWorld(v, u, self.aVars.BEVparams);
 
-            step = 0.2;
+            step = 1;
             
-            xg = fliplr(linspace(-30, 30, imsize(1)));
-            yg = linspace(9, 120, imsize(2))';
+            xg = fliplr(linspace(-30, 30, imsize(1)));% 34:-step:-26;% 
+            yg = linspace(9, imsize(2)/2, imsize(2))';% (10:step:240)';% 
 
             self.aVars.BEV.rHorizon = rHorizon;
             self.aVars.BEV.X = X;
@@ -234,7 +234,7 @@ classdef Simulator < handle
             
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
-            for t = 0:delT:80
+            for t = 40%:delT:80
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -314,6 +314,7 @@ classdef Simulator < handle
 %                 
                 %% Apply the BEV transform
                 im = rgb;
+%                 im = rgb2gray(rgb);
 %                 im = labels;
 
                 % Performe the BEV transform
@@ -321,16 +322,18 @@ classdef Simulator < handle
                 [xx,yy] = meshgrid(self.aVars.BEV.xg, self.aVars.BEV.yg);
                 for d = 1:size(im,3);
             %         imBEV(:,:,d) = interp2(u, v, double(im(:,:,d)), X, Y);
-            %         tempIm = griddata(self.aVars.BEV.X,self.aVars.BEV.Y, double(im(self.aVars.BEV.rHorizon:end, :, d))/255, self.aVars.BEV.xg, self.aVars.BEV.yg, 'linear');
-                    interpIm = double(im(1:end, :, d))/255;
-
-
+%                     tempIm = griddata(self.aVars.BEV.X, self.aVars.BEV.Y, double(im(self.aVars.BEV.rHorizon:end, :, d))/255, self.aVars.BEV.xg, self.aVars.BEV.yg, 'linear');
+                    
+                    interpIm = double(im(self.aVars.BEV.rHorizon:end, :, d))/255;
                     F = TriScatteredInterp(self.aVars.BEV.X(:), self.aVars.BEV.Y(:), interpIm(:));
                     imBEV(:,:,d) = rot90(F(xx,yy),2);
                 end
-
                 imBEV = uint8(imBEV*255);
-                
+
+%                 imBEV = griddata(self.aVars.BEV.X, self.aVars.BEV.Y, double(im(self.aVars.BEV.rHorizon:end, :))/255, self.aVars.BEV.xg, self.aVars.BEV.yg, 'linear');
+%                 imBEV = rot90(imBEV);
+%                 imBEV = rot90(imBEV);
+%                 
                 %% Update the results display
                 % Copy the current image to the results window
                 figure(self.hResultsWindow);
@@ -338,7 +341,7 @@ classdef Simulator < handle
                 cla(ax)
 %                 imshow(rgb, 'Parent', ax); hold on,
 %                 imagesc(labels, 'Parent', ax); hold on,
-                imshow(imBEV, 'Parent', ax); hold on,
+                imagesc(imBEV, 'Parent', ax); colormap gray, hold on,
                 title(sprintf('Time %0.2f', t))
                
                 % Draw the VP Results
@@ -484,6 +487,23 @@ classdef Simulator < handle
                     set(h, 'FaceColor', color);
                 end
             end
+        end
+    end
+    
+    methods(Static)
+        function [X,Y] = ImageToWorld(v,u, params)
+
+            m = params.m-1;
+            n = params.n-1;
+            alpha = params.alpha;
+            dx = params.CameraLocationInWorld(1);
+            dy = params.CameraLocationInWorld(2);
+            dz = params.CameraLocationInWorld(3);
+            theta = params.Theta;
+            gamma = params.Gamma;
+
+            X = dz * cot(theta - alpha + u.*(2*alpha/m)) .* sin(gamma - alpha + v.*(2*alpha / n)) + dx;
+            Y = dz * cot(theta - alpha + u.*(2*alpha/m)) .* cos(gamma - alpha + v.*(2*alpha / n)) + dy;
         end
     end
 end
