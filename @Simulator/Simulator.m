@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-%         MakeVideo = true;
-        MakeVideo = false;
+        MakeVideo = true;
+%         MakeVideo = false;
         
         Lighting
     end
@@ -198,7 +198,7 @@ classdef Simulator < handle
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('Hough.avi');
+                mov = VideoWriter('PathPlanningPerspective.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -220,9 +220,9 @@ classdef Simulator < handle
                 rgb = getframe(self.HD.MainView);
                 rgb = rgb.cdata;
                 
-                %% Update the VP Tracker
-                control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
-                self.aVars.VPTracker.Update(rgb, control);
+%                 %% Update the VP Tracker
+%                 control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
+%                 self.aVars.VPTracker.Update(rgb, control);
                 
                 %% Do color thresholding to locate and classify the road/obstacles
 %                 % Turn off the lights to get the correct coloring
@@ -283,17 +283,155 @@ classdef Simulator < handle
                     end
                 end
                 
+                %% Do the maze path following algorithm stuff
+                
+                % Get the current vanishing point estimate
+                [vpx, vpy] = self.aVars.VPTracker.getVanishingPoint();
+                
+                % Create an edge map for the path planning
+                road = labels ~= 3;
+                Im = double(road);
+                imsize = size(Im);
+                
+%                 lanemarkers = labels == 5;
+%                 im(lanemarkers) = 0.5;
+                
+                se = strel('ball', 10, 10);
+                smoothedIm = 10-imdilate(1-Im, se);
+                
+                % Figure out what direction the edges are going
+                LeftRight = [zeros(size(smoothedIm,1),1) diff(smoothedIm, [], 2)];
+                UpDown = [zeros(1,size(smoothedIm,2)); diff(smoothedIm, [], 1)];
+                
+                % Create a curve towards the vanishing point
+                [xx,yy] = meshgrid(1:imsize(2), 1:imsize(1));
+                dx = vpx - xx;
+                dy = vpy - yy;
+                newMag =  sqrt(dx.*dx + dy.*dy);
+            %     newMag = 1 - newMag / max(newMag(:));
+                newMag = newMag / max(newMag(:));
+                
+                % Create the GVF
+                mu = 0.2;
+                smoothedIm = padarray(smoothedIm, [1 1], 'symmetric', 'both');
+                [fx,fy] = gradient(smoothedIm);
+                
+                u = fx;
+                v = fy;
+                newMag = padarray(newMag, [1 1], 'symmetric', 'both');
+                [fx2, fy2] = gradient(newMag);
+                
+                gradMag = u.*u + v.*v;
+                
+                for n = 1:80
+                    u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
+                    v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
+                    u = u + mu*4*del2(u) - gradMag.*(u-fx);
+                    v = v + mu*4*del2(v) - gradMag.*(v-fy);
+                end
+                u = u(2:end-1,2:end-1);
+                v = v(2:end-1,2:end-1);
+
+                maxEdge = max(max(hypot(u,v))); %0.25
+                edgeX = maxEdge*fx2./(hypot(fx2,fy2) + eps);
+                edgeY = maxEdge*fy2./(hypot(fx2,fy2) + eps);
+                
+                clockwise = true;
+            %     clockwise = false;
+                if clockwise 
+                    v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
+                    v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
+                    v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge/2;
+                    v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge/2;
+                else
+                    v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
+                    v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
+                    v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
+                    v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
+                end    
+                
+                u(Im < 0.5) = edgeX(Im < 0.5);
+                v(Im < 0.5) = edgeY(Im < 0.5);
+
+                magGVF = hypot(u,v) + 1e-10;
+                fx = u./magGVF;
+                fy = v./magGVF;
+                
+                % Create the initial snake coordinates
+                x_s = linspace(round(imsize(2)/2),vpx,10);
+                y_s = linspace(imsize(1),vpy,10);
+
+                % Upsample & create a spline
+                steps = 0:(length(x_s)-1);
+                newSteps = 0:0.05:(length(x_s)-1);
+                pp = spline(steps,[x_s' y_s']', newSteps);
+                x_s = pp(1,:)';
+                y_s = pp(2,:)';
+                
+                % Create the components of the Euler equation
+                % [Tension, rigidity, stepsize, energy portion]
+                alpha = 0.1;% 0.4;%0.5; 
+                beta = 0.0;%0.5;
+                gamma = 1;
+                kappa = 0.96;
+                A = imfilter(eye(length(newSteps)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
+
+                % Compute the inverse of A by LU decompositions since it is a
+                % pentadiagonal banded matrix
+                [L,U] = lu(A + gamma*eye(size(A)));
+                invA = inv(U) * inv(L);
+
+                % Iteratively solve the Euler equations for x & y
+%                 tempFig = figure(999);
+%                 tempax = gca(tempFig);
+%                 cla(tempax);
+%                 imagesc(smoothedIm), colormap gray, hold on,
+%                 hSpline = plot(tempax, x_s, y_s, 'b');
+                
+                for n = 1:400
+                    newx = gamma*x_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
+                    newy = gamma*y_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
+
+                    x_s = invA*newx;
+                    y_s = invA*newy;
+
+                    % Redistribute the points along the curve
+                    x_s([1 end]) = [round(imsize(2)/2) vpx];
+                    y_s([1 end]) = [imsize(1) vpy];   
+                    dStep = cumsum(hypot([0; diff(x_s)],[0; diff(y_s)]));
+                    newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
+%                     dStep = cumsum(hypot(diff(x_s),diff(y_s)));
+%                     newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
+                    x_s = interp1(dStep,x_s,newStep);
+                    y_s = interp1(dStep,y_s,newStep);
+                    
+%                     set(hSpline, 'XData', x_s, 'YData', y_s, 'Marker', 'o');
+%                     drawnow
+                end
+                
+% %                 figure, hq = quiver(fx,fy); axis ij, axis image
+%                 figure(988)
+%                 cla
+%                 [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
+%                 ind = sub2ind(imsize, xx,yy);
+%                 quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
+                
                 %% Update the results display
                 % Copy the current image to the results window
                 figure(self.hResultsWindow);
                 ax = gca(self.hResultsWindow);
                 cla(ax)
 %                 imshow(rgb, 'Parent', ax); hold on,
-                imagesc(labels, 'Parent', ax); hold on,
+%                 imagesc(labels, 'Parent', ax); hold on,
+                imagesc(smoothedIm, 'Parent', ax); colormap gray, hold on, 
                 title(sprintf('Time %0.2f', t))
                
                 % Draw the VP Results
                 self.aVars.VPTracker.PlotResults(ax, 0);
+
+                % Draw the path planning results
+                plot(ax, x_s, y_s,'b'); plot(round(imsize(2)/2), imsize(1), 'x', vpx, vpy)
+
                
                 %% Store the results window in a video
                 if self.MakeVideo

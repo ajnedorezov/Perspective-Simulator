@@ -101,8 +101,13 @@ classdef VPTracker < handle
             if detailLevel >= 1
                 plot(ax, self.prior.samples(:,1), self.prior.samples(:,2), 'y.')
             end
-            plot(ax, self.prior.mean(1), self.prior.mean(2), 'ws', 'linewidth', 2, 'Markersize', 10);
+            plot(ax, self.prior.mean(1), self.prior.mean(2), 'ys', 'linewidth', 2, 'Markersize', 10);
                                
+        end
+        
+        function [x,y] = getVanishingPoint(self)
+            x = self.prior.mean(1);
+            y = self.prior.mean(2);
         end
     end
     
