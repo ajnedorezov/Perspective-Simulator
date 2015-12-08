@@ -205,7 +205,7 @@ classdef Simulator < handle
             
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
-            for t = 0:delT:80
+            for t = 0:delT:40
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -220,9 +220,9 @@ classdef Simulator < handle
                 rgb = getframe(self.HD.MainView);
                 rgb = rgb.cdata;
                 
-%                 %% Update the VP Tracker
-%                 control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
-%                 self.aVars.VPTracker.Update(rgb, control);
+                %% Update the VP Tracker
+                control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
+                self.aVars.VPTracker.Update(rgb, control);
                 
                 %% Do color thresholding to locate and classify the road/obstacles
 %                 % Turn off the lights to get the correct coloring
@@ -308,8 +308,8 @@ classdef Simulator < handle
                 dx = vpx - xx;
                 dy = vpy - yy;
                 newMag =  sqrt(dx.*dx + dy.*dy);
-            %     newMag = 1 - newMag / max(newMag(:));
-                newMag = newMag / max(newMag(:));
+                newMag = 1 - newMag / max(newMag(:));
+%                 newMag = newMag / max(newMag(:));
                 
                 % Create the GVF
                 mu = 0.2;
@@ -370,8 +370,8 @@ classdef Simulator < handle
                 
                 % Create the components of the Euler equation
                 % [Tension, rigidity, stepsize, energy portion]
-                alpha = 0.1;% 0.4;%0.5; 
-                beta = 0.0;%0.5;
+                alpha = 0.1;% 0.1;% 0.4;%0.5; 
+                beta = 0.6;%0.0;%0.5;
                 gamma = 1;
                 kappa = 0.96;
                 A = imfilter(eye(length(newSteps)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
@@ -410,11 +410,11 @@ classdef Simulator < handle
                 end
                 
 % %                 figure, hq = quiver(fx,fy); axis ij, axis image
-%                 figure(988)
-%                 cla
-%                 [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
-%                 ind = sub2ind(imsize, xx,yy);
-%                 quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
+                figure(988)
+                cla
+                [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
+                ind = sub2ind(imsize, xx,yy);
+                quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
                 
                 %% Update the results display
                 % Copy the current image to the results window
