@@ -198,7 +198,7 @@ classdef Simulator < handle
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('PathPlanningPerspective.avi');
+                mov = VideoWriter('PathPlanning_basic.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -289,19 +289,20 @@ classdef Simulator < handle
                 [vpx, vpy] = self.aVars.VPTracker.getVanishingPoint();
                 
                 % Create an edge map for the path planning
-                road = labels ~= 3;
-                Im = double(road);
+                road = (labels == 3 | labels == 5);
+                Im = double(~road);
                 imsize = size(Im);
                 
 %                 lanemarkers = labels == 5;
 %                 im(lanemarkers) = 0.5;
                 
-                se = strel('ball', 10, 10);
-                smoothedIm = 10-imdilate(1-Im, se);
+                smArea = 50;
+                se = strel('ball', smArea, smArea);
+                smoothedIm = smArea-imdilate(1-Im, se);
                 
-                % Figure out what direction the edges are going
-                LeftRight = [zeros(size(smoothedIm,1),1) diff(smoothedIm, [], 2)];
-                UpDown = [zeros(1,size(smoothedIm,2)); diff(smoothedIm, [], 1)];
+%                 % Figure out what direction the edges are going
+%                 LeftRight = [zeros(size(smoothedIm,1),1) diff(smoothedIm, [], 2)];
+%                 UpDown = [zeros(1,size(smoothedIm,2)); diff(smoothedIm, [], 1)];
                 
                 % Create a curve towards the vanishing point
                 [xx,yy] = meshgrid(1:imsize(2), 1:imsize(1));
@@ -314,16 +315,16 @@ classdef Simulator < handle
                 % Create the GVF
                 mu = 0.2;
                 smoothedIm = padarray(smoothedIm, [1 1], 'symmetric', 'both');
-                [fx,fy] = gradient(smoothedIm);
+                [fx,fy] = gradient(-smoothedIm);
                 
                 u = fx;
                 v = fy;
                 newMag = padarray(newMag, [1 1], 'symmetric', 'both');
-                [fx2, fy2] = gradient(newMag);
+                [fx2, fy2] = gradient(0*newMag);
                 
                 gradMag = u.*u + v.*v;
                 
-                for n = 1:80
+                for n = 1:160%80
                     u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
                     v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
                     u = u + mu*4*del2(u) - gradMag.*(u-fx);
@@ -336,22 +337,22 @@ classdef Simulator < handle
                 edgeX = maxEdge*fx2./(hypot(fx2,fy2) + eps);
                 edgeY = maxEdge*fy2./(hypot(fx2,fy2) + eps);
                 
-                clockwise = true;
-            %     clockwise = false;
-                if clockwise 
-                    v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
-                    v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
-                    v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge/2;
-                    v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge/2;
-                else
-                    v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
-                    v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
-                    v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
-                    v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
-                end    
+%                 clockwise = true;
+%             %     clockwise = false;
+%                 if clockwise 
+%                     v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
+%                     v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
+%                     v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge/2;
+%                     v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge/2;
+%                 else
+%                     v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
+%                     v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
+%                     v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
+%                     v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
+%                 end    
                 
-                u(Im < 0.5) = edgeX(Im < 0.5);
-                v(Im < 0.5) = edgeY(Im < 0.5);
+%                 u(Im < 0.5) = edgeX(Im < 0.5);
+%                 v(Im < 0.5) = edgeY(Im < 0.5);
 
                 magGVF = hypot(u,v) + 1e-10;
                 fx = u./magGVF;
@@ -371,7 +372,7 @@ classdef Simulator < handle
                 % Create the components of the Euler equation
                 % [Tension, rigidity, stepsize, energy portion]
                 alpha = 0.1;% 0.1;% 0.4;%0.5; 
-                beta = 0.6;%0.0;%0.5;
+                beta = 0.75;%0.0;%0.5;
                 gamma = 1;
                 kappa = 0.96;
                 A = imfilter(eye(length(newSteps)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
