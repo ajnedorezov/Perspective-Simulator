@@ -190,15 +190,20 @@ classdef Simulator < handle
         function InitializeAlgorithm(self)
             self.hResultsWindow = figure;
             
-            %% Initilize the Monte-Carlo Vanishing Point Tracker(MCVPT)
+            %% Initialize the Monte-Carlo Vanishing Point Tracker(MCVPT)
             self.aVars.VPTracker = VPTracker(1000, self.aVars.imsize);
+            
+            %% Initialize the Inverse Perspective Mapping (IPM) class
+            self.aVars.IPM = IPM(fliplr(self.aVars.imsize),...
+                'cameraZ', 4.4,...
+                'theta', atan(self.CameraParams.height/self.DriverParams.lookAheadDistance));
             
         end
         
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('PathPlanning_basic.avi');
+                mov = VideoWriter('PathPlanning_IPM.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -220,11 +225,12 @@ classdef Simulator < handle
                 rgb = getframe(self.HD.MainView);
                 rgb = rgb.cdata;
                 
-                %% Update the VP Tracker
-                control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
-                self.aVars.VPTracker.Update(rgb, control);
+%                 %% Update the VP Tracker
+%                 control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
+%                 self.aVars.VPTracker.Update(rgb, control);
                 
                 %% Do color thresholding to locate and classify the road/obstacles
+                %{
 %                 % Turn off the lights to get the correct coloring
 %                 set(self.Lighting, 'Visible', 'off');
 %                 gtRGB = getframe(self.HD.MainView);
@@ -282,9 +288,54 @@ classdef Simulator < handle
                         eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
                     end
                 end
+                %}
+                
+                %% Perform the IPM
+                ipmIm = self.aVars.IPM.performTransformation(double(rgb2gray(rgb))/255);
+                ipmIm = rot90(ipmIm);
+                
+                %% Detect obstacles by checking if its a horizontal streak
+                % Perform K-means to segment the image into different
+                % regions
+                numCusters = 5;
+                
+                [IDX, centers] = kmeans(ipmIm(:), numCusters);
+                IDX(isnan(IDX)) = -1;
+                IDX = reshape(IDX, size(ipmIm));
+                
+                % Break each cluster into individual unique clusters,
+                % concurrently, decide if the cluster is roadway
+                newLabels = zeros(size(IDX));
+                offset = 0;
+                roadLabels = [];
+                for n = 1:length(centers)
+                    ind = IDX == n;
+                    tempLabels = bwlabeln(ind) + offset;
+                    newLabels(ind) = tempLabels(ind & newLabels==0);
+                    offset = max(newLabels(:));
+                    % NOTE this conditional logic needs to change so it'll be more adaptive
+                    % to roadway light fluctuations (i.e. use the color of the road right
+                    % in front of the camera, this means we need to maintain some distance
+                    % between vehicles)
+                %     if centers(n) > .33 && centers(n) < .4
+                    if centers(n) > .2 && centers(n) < .3
+                        % These belong to the road
+                        roadLabels = [roadLabels; unique(tempLabels)];
+                    end
+                end
+
+                % Get the region properties for the segments
+                stats = regionprops(newLabels, 'BoundingBox', 'Extent', 'Orientation');
+
+                % Decide if the cluster is streak like and something that
+                % should be avoided
+                obstacles = false(length(stats),1);
+                for n = 1:length(stats)
+                    obstacles(n) = ~ismember(n, roadLabels) && stats(n).BoundingBox(3) > 100 && stats(n).BoundingBox(3) > stats(n).BoundingBox(4) && stats(n).BoundingBox(4) > 30;
+                end
                 
                 %% Do the maze path following algorithm stuff
-                
+                %{
                 % Get the current vanishing point estimate
                 [vpx, vpy] = self.aVars.VPTracker.getVanishingPoint();
                 
@@ -417,6 +468,8 @@ classdef Simulator < handle
                 ind = sub2ind(imsize, xx,yy);
                 quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
                 
+                %}
+                
                 %% Update the results display
                 % Copy the current image to the results window
                 figure(self.hResultsWindow);
@@ -424,14 +477,23 @@ classdef Simulator < handle
                 cla(ax)
 %                 imshow(rgb, 'Parent', ax); hold on,
 %                 imagesc(labels, 'Parent', ax); hold on,
-                imagesc(smoothedIm, 'Parent', ax); colormap gray, hold on, 
+%                 imagesc(ipmIm, 'Parent', ax); colormap gray, hold on, 
+                imshowpair(ismember(newLabels, find(obstacles)), ipmIm, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
+%                 imagesc(smoothedIm, 'Parent', ax); colormap gray, hold on, 
                 title(sprintf('Time %0.2f', t))
                
-                % Draw the VP Results
-                self.aVars.VPTracker.PlotResults(ax, 0);
+%                 % Draw the VP Results
+%                 self.aVars.VPTracker.PlotResults(ax, 0);
 
-                % Draw the path planning results
-                plot(ax, x_s, y_s,'b'); plot(round(imsize(2)/2), imsize(1), 'x', vpx, vpy)
+                % Draw bounding boxes around the obstacles
+                for n = find(obstacles)'
+                    plot(stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
+                end
+%                 alpha = ismember(newLabels, find(obstacles));
+%                 set(h, 'AlphaData', alpha')
+                
+%                 % Draw the path planning results
+%                 plot(ax, x_s, y_s,'b'); plot(round(imsize(2)/2), imsize(1), 'x', vpx, vpy)
 
                
                 %% Store the results window in a video
@@ -574,6 +636,11 @@ classdef Simulator < handle
                     set(h, 'FaceColor', color);
                 end
             end
+        end
+        
+        function [minv, maxv] = minmax(x)
+            minv = min(x(:));
+            maxv = max(x(:));
         end
     end
 end

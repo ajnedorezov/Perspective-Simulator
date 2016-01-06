@@ -34,7 +34,7 @@ Ic = rgb2gray(Ic);
 [m,n] = size(Ic);
 % Ic = imresize(Ic, [m, n]);
 
-[m,n,c] = size(Ic);
+% [m,n,c] = size(Ic);
 Ic = double(Ic)/255;
 
 % Obtain alpha from the overall viewing angle.
