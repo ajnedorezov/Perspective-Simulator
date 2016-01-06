@@ -28,8 +28,8 @@ n = 320;
 
 % Ic = imread('grayRoadScene.tif');
 % Ic = imread('roadPicBig.tif');
-% Ic = imread('BaseIm.png');
-Ic = imread('freeway.jpg');
+Ic = imread('BaseIm.png');
+% Ic = imread('freeway.jpg');
 Ic = rgb2gray(Ic);
 [m,n] = size(Ic);
 % Ic = imresize(Ic, [m, n]);
@@ -153,3 +153,65 @@ axis image;
 title('Bertozzi and Broggi''s Mapping Results');
 xlabel('Column');
 ylabel('Row');
+
+
+%% START AJN MAJOR ADDITIONS
+
+% Define helper function
+minmax = @(x) [min(x(:)), max(x(:))];
+
+% Segment the grayscale image to quantize the regions
+Irange = minmax(Iw);
+% Irange = [0 1];
+
+% Perform K means to segement the image
+k = 5;
+% cstep = diff(Irange)/(k);
+% centers = (Irange(1)+cstep/2):cstep:Irange(2);
+
+[IDX, C] = kmeans(Iw(:), k);
+IDX(isnan(IDX)) = -1;
+IDX = reshape(IDX, size(Iw));
+newLabels = zeros(size(IDX));
+offset = 0;
+roadLabels = [];
+for n = 1:length(C)
+    ind = IDX == n;
+    tempLabels = bwlabeln(ind) + offset;
+    newLabels(ind) = tempLabels(ind & newLabels==0);
+    offset = max(newLabels(:));
+    % NOTE this conditional logic needs to change so it'll be more adaptive
+    % to roadway light fluctuations (i.e. use the color of the road right
+    % in front of the camera, this means we need to maintain some distance
+    % between vehicles)
+%     if C(n) > .33 && C(n) < .4
+    if C(n) > .2 && C(n) < .3
+        % These belong to the road
+        roadLabels = [roadLabels; unique(tempLabels)];
+    end
+end
+
+%%
+% Plot the segmentation
+figure, imagesc(IDX)
+figure, imagesc(newLabels)
+
+% Get the region properties for the segments
+stats = regionprops(newLabels, 'BoundingBox', 'Extent', 'Orientation');
+
+
+% Draw each bounding box
+hold on,
+obstacles = false(length(stats),1);
+for n = 1:length(stats)
+    obstacles(n) = ~ismember(n, roadLabels) && stats(n).BoundingBox(3) > 100 && stats(n).BoundingBox(3) > stats(n).BoundingBox(4) && stats(n).BoundingBox(4) > 30;
+    if obstacles(n)
+        plot(stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'w');
+    end
+end
+
+% Iobstacles = newLabels;
+% Iobstacles(~ismember(newLabels, find(obstacles))) = 0;
+Iobstacles = ismember(newLabels, find(obstacles));
+
+figure, imagesc(Iobstacles);
