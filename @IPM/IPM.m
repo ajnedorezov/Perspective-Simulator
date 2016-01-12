@@ -41,7 +41,7 @@ classdef IPM < handle
             ip.addOptional('cameraZ', self.cameraZ);
             ip.addOptional('gamma', self.gamma);
             ip.addOptional('theta', self.theta);
-            ip.addOptional('stepSize', self.stepSize, @(x) x > 0);
+            ip.addOptional('stepSize', self.stepSize, @(x) all(x > 0));
             ip.addOptional('xRange', self.xRange);
             ip.addOptional('yRange', self.yRange);
             
@@ -91,9 +91,16 @@ classdef IPM < handle
 
                 self.rHorizon = ceil( (self.ImSize(1)-1) / (2*self.alpha) * (self.alpha - self.theta) + 1) + 10;
 
-                self.xSteps = max(self.xRange):-self.stepSize:min(self.xRange);
+                if length(self.stepSize) > 1
+                    xStepSize = self.stepSize(1);
+                    yStepSize = self.stepSize(2);
+                else
+                    xStepSize = self.stepSize;
+                    yStepSize = self.stepSize;
+                end
+                self.xSteps = max(self.xRange):-xStepSize:min(self.xRange);
 
-                self.ySteps = (min(self.yRange):self.stepSize:max(self.yRange))';
+                self.ySteps = (min(self.yRange):yStepSize:max(self.yRange))';
 
                 self.reEvalParams = false;
             end
@@ -124,7 +131,40 @@ classdef IPM < handle
             self.YWorld = Yvis;
         end
         
-        function outIm = performTransformation(self, grayIm)
+        function ptWorld = transformSinglePoint(self, x, y)
+            if ~exist('y','var')
+               if length(x) == 2
+                   y = x(2);
+                   x(2) = [];
+               else
+                   error('Invalid Y value');
+               end
+            end 
+            
+            if self.reEvalParams
+                den = norm(self.ImSize-1);
+                self.alpha = atan( (self.ImSize(1)-1)/den * tan(self.alpha_tot) );
+
+                self.rHorizon = ceil( (self.ImSize(1)-1) / (2*self.alpha) * (self.alpha - self.theta) + 1) + 10;
+
+                self.xSteps = max(self.xRange):-self.stepSize:min(self.xRange);
+
+                self.ySteps = (min(self.yRange):self.stepSize:max(self.yRange))';
+
+                self.reEvalParams = false;
+            end
+            
+            cotStuff = cot(self.theta-self.alpha+(x(:)'-1)*(2*self.alpha)/(self.ImSize(1)-1));
+            otherArg = self.gamma-self.alpha+(y(:)'-1)*(2*self.alpha)/(self.ImSize(2)-1);
+            ptWorld(1,:) = self.cameraZ.*cotStuff.*sin(otherArg) + self.cameraX;
+            ptWorld(2,:) = self.cameraZ.*cotStuff.*cos(otherArg) + self.cameraY;
+            
+        end
+        
+        function outIm = performTransformation(self, grayIm, showFig)
+            if ~exist('showFig', 'var')
+                showFig = -1;
+            end
             Icropped = grayIm(self.rHorizon:end,:);
             
             outIm = griddata(self.XWorld, self.YWorld, Icropped, self.xSteps, self.ySteps, 'linear');
@@ -132,6 +172,41 @@ classdef IPM < handle
 %             F = scatteredInterpolant(self.XWorld(:), self.YWorld(:), Icropped(:));
 %             [xx,yy] = meshgrid(self.xSteps, self.ySteps);
 %             outIm = F(xx,yy);
+
+            if showFig > 0
+                figure(showFig)
+                                
+                surf(self.YWorld, -self.XWorld, zeros(size(self.XWorld)), 'FaceColor', 'interp', ...
+                    'CData', floor(Icropped*255), 'EdgeColor', 'none');
+                % surf(Yvis, -Xvis, zeros(size(Xvis)), 'FaceColor', 'interp', ...
+                %     'CData', floor(rgb2gray(Icropped)*255), 'EdgeColor', 'none');
+                view(2);
+                axis image;
+                colormap(gray);
+                set(gca, 'YLim', [-40 40]);
+                title('Bertozzi and Broggi''s Inverspse Perspective Mapping Results', 'FontSize', 10);
+                xlabel('Forward Distance (feet)');
+                ylabel('Side to Side Distance (feet)');
+
+                % For comparison, also plot where the lane markers and stop line should be
+                % according to the way they were generated.  (Remember that this method is
+                % supposed to take care of the offset between the camera and the origin.)
+                width = 1.5;
+                hOut = line([self.YWorld(end,1), self.YWorld(1,1)], [-9.84252, -9.84252], [0 0], 'LineStyle', '--', ...
+                    'Color', 'r', 'LineWidth', width);
+                line([self.YWorld(end,1), self.YWorld(1,1)], [9.84252, 9.84252], [0 0], 'LineStyle', '--', ...
+                    'Color', 'r', 'LineWidth', width);
+                hCent = line([self.YWorld(end,1), self.YWorld(1,1)], [0, 0], [0 0], 'LineStyle', '--', ...
+                    'Color', 'b', 'LineWidth', width);
+                hStop = line([76, 76], [-9.84252, 0], [0 0], 'LineStyle', '--', ...
+                    'Color', 'y', 'LineWidth', width);
+                legend([hOut, hCent, hStop], {'Ideal Outside', 'Ideal Center', 'Ideal Stop Line'}, ...
+                    'Location', 'NEO');
+
+                % The lane markers and stop line in the mapped image don't come out that
+                % close using this method.  The distance to the lane marker is particularly
+                % erroneous.
+            end
         end
     end
 end

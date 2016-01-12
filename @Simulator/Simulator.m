@@ -171,7 +171,7 @@ classdef Simulator < handle
             carlane = randi(self.RoadParams.numLanes,1,self.SimulationParams.numCars)-1;
 %             carlane = [2 0 1 1];
             for n = 1:self.SimulationParams.numCars
-                self.MovingObjects.Cars(n) = surface(x + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
+                self.MovingObjects.Cars(n) = surface(x + 10 + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
             end
             
         end
@@ -196,28 +196,31 @@ classdef Simulator < handle
             %% Initialize the Inverse Perspective Mapping (IPM) class
             self.aVars.IPM = IPM(fliplr(self.aVars.imsize),...
                 'cameraZ', 4.4,...
-                'theta', atan(self.CameraParams.height/self.DriverParams.lookAheadDistance));
+                'theta', atan(self.CameraParams.height/self.DriverParams.lookAheadDistance),...
+                'stepSize', [.125 .25],...
+                'xRange', [-34 34],...
+                'yRange', [0 300]);  % 328.084]);
             
         end
         
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('PathPlanning_IPM.avi');
+                mov = VideoWriter('IPM_Streak_wVP.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
             
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
-            for t = 0:delT:40
+            for t = 0:delT:80
                 if ~ishandle(self.HD.MainView)
                     break
                 end
                 %% Update the vehicle/dynamics/scene simulation
                 figure(self.hFigure);
-                posvec = [t self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
-                targvec = posvec + self.DriverParams.lookAheadDistance*[1 self.RoadParams.laneWidth/25*cos(t/25) 0];
+                posvec = [t self.RoadParams.laneWidth*cos(t/25) + 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
+                targvec = posvec + self.DriverParams.lookAheadDistance*[1 -self.RoadParams.laneWidth/25*sin(t/25) 0];
                 campos(posvec);
                 camtarget(targvec);
 
@@ -225,9 +228,9 @@ classdef Simulator < handle
                 rgb = getframe(self.HD.MainView);
                 rgb = rgb.cdata;
                 
-%                 %% Update the VP Tracker
-%                 control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
-%                 self.aVars.VPTracker.Update(rgb, control);
+                %% Update the VP Tracker
+                control = [0 0];%[delT self.RoadParams.laneWidth*sin(t/25) + 3*self.RoadParams.laneWidth/2];
+                self.aVars.VPTracker.Update(rgb, control);
                 
                 %% Do color thresholding to locate and classify the road/obstacles
                 %{
@@ -293,6 +296,8 @@ classdef Simulator < handle
                 %% Perform the IPM
                 ipmIm = self.aVars.IPM.performTransformation(double(rgb2gray(rgb))/255);
                 ipmIm = rot90(ipmIm);
+                
+                ipmVP = self.aVars.IPM.transformSinglePoint([self.aVars.IPM.rHorizon, self.aVars.VPTracker.prior.mean(1)]);
                 
                 %% Detect obstacles by checking if its a horizontal streak
                 % Perform K-means to segment the image into different
@@ -478,7 +483,10 @@ classdef Simulator < handle
 %                 imshow(rgb, 'Parent', ax); hold on,
 %                 imagesc(labels, 'Parent', ax); hold on,
 %                 imagesc(ipmIm, 'Parent', ax); colormap gray, hold on, 
-                imshowpair(ismember(newLabels, find(obstacles)), ipmIm, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
+                
+%                 imshowpair(ismember(newLabels, find(obstacles)), ipmIm, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
+                RA = imref2d(size(ipmIm),self.aVars.IPM.yRange, self.aVars.IPM.xRange);
+                imshowpair(ismember(newLabels, find(obstacles)), RA, ipmIm, RA, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
 %                 imagesc(smoothedIm, 'Parent', ax); colormap gray, hold on, 
                 title(sprintf('Time %0.2f', t))
                
@@ -486,11 +494,18 @@ classdef Simulator < handle
 %                 self.aVars.VPTracker.PlotResults(ax, 0);
 
                 % Draw bounding boxes around the obstacles
+                sx = diff(self.aVars.IPM.xRange)/size(ipmIm,1);
+                sy = diff(self.aVars.IPM.yRange)/size(ipmIm,2);
                 for n = find(obstacles)'
-                    plot(stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
+                    x = (stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0])*sy;
+                    y = (stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0])*sx + self.aVars.IPM.xRange(1);
+%                     newPts = self.aVars.IPM.transformSinglePoint(y, x);
+                    plot(ax, x, y, 'y', 'linewidth', 1.5);
+%                     plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
                 end
-%                 alpha = ismember(newLabels, find(obstacles));
-%                 set(h, 'AlphaData', alpha')
+
+                % Draw the path to the vanishing point
+                plot(ax, [0 ipmVP(2)], [0 ipmVP(1)], 'g', 'linewidth', 2)
                 
 %                 % Draw the path planning results
 %                 plot(ax, x_s, y_s,'b'); plot(round(imsize(2)/2), imsize(1), 'x', vpx, vpy)
