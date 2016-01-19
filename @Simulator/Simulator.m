@@ -206,14 +206,14 @@ classdef Simulator < handle
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('IPM_Streak_wVP.avi');
+                mov = VideoWriter('IPM_PathPlanning.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
             
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
-            for t = 0:delT:80
+            for t = 0:delT:40
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -340,17 +340,18 @@ classdef Simulator < handle
                 end
                 
                 %% Do the maze path following algorithm stuff
-                %{
                 % Get the current vanishing point estimate
-                [vpx, vpy] = self.aVars.VPTracker.getVanishingPoint();
+                origvpx = (ipmVP(1)-self.aVars.IPM.xRange(1))*size(ipmIm,1)/diff(self.aVars.IPM.xRange);
+                origvpy = ipmVP(2)*size(ipmIm,2)/diff(self.aVars.IPM.yRange);
+                
+                % Limit vp to point in image
+                m = (origvpx-size(ipmIm,1)/2)/origvpy;
+                vpy = size(ipmIm,2);
+                vpx = vpy*m + size(ipmIm,1)/2;
                 
                 % Create an edge map for the path planning
-                road = (labels == 3 | labels == 5);
-                Im = double(~road);
+                Im = ismember(newLabels, find(obstacles));
                 imsize = size(Im);
-                
-%                 lanemarkers = labels == 5;
-%                 im(lanemarkers) = 0.5;
                 
                 smArea = 50;
                 se = strel('ball', smArea, smArea);
@@ -380,7 +381,7 @@ classdef Simulator < handle
                 
                 gradMag = u.*u + v.*v;
                 
-                for n = 1:160%80
+                for n = 1:80
                     u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
                     v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
                     u = u + mu*4*del2(u) - gradMag.*(u-fx);
@@ -415,8 +416,8 @@ classdef Simulator < handle
                 fy = v./magGVF;
                 
                 % Create the initial snake coordinates
-                x_s = linspace(round(imsize(2)/2),vpx,10);
-                y_s = linspace(imsize(1),vpy,10);
+                x_s = linspace(imsize(1)/2,vpx,10);
+                y_s = linspace(1,vpy,10);
 
                 % Upsample & create a spline
                 steps = 0:(length(x_s)-1);
@@ -453,8 +454,8 @@ classdef Simulator < handle
                     y_s = invA*newy;
 
                     % Redistribute the points along the curve
-                    x_s([1 end]) = [round(imsize(2)/2) vpx];
-                    y_s([1 end]) = [imsize(1) vpy];   
+                    x_s([1 end]) = [imsize(1)/2 vpx];
+                    y_s([1 end]) = [0 vpy];
                     dStep = cumsum(hypot([0; diff(x_s)],[0; diff(y_s)]));
                     newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
 %                     dStep = cumsum(hypot(diff(x_s),diff(y_s)));
@@ -467,13 +468,13 @@ classdef Simulator < handle
                 end
                 
 % %                 figure, hq = quiver(fx,fy); axis ij, axis image
-                figure(988)
-                cla
-                [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
-                ind = sub2ind(imsize, xx,yy);
-                quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
+%                 figure(988)
+%                 cla
+%                 [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
+%                 ind = sub2ind(imsize, xx,yy);
+%                 quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
                 
-                %}
+%                 %}
                 
                 %% Update the results display
                 % Copy the current image to the results window
@@ -496,19 +497,19 @@ classdef Simulator < handle
                 % Draw bounding boxes around the obstacles
                 sx = diff(self.aVars.IPM.xRange)/size(ipmIm,1);
                 sy = diff(self.aVars.IPM.yRange)/size(ipmIm,2);
-                for n = find(obstacles)'
-                    x = (stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0])*sy;
-                    y = (stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0])*sx + self.aVars.IPM.xRange(1);
-%                     newPts = self.aVars.IPM.transformSinglePoint(y, x);
-                    plot(ax, x, y, 'y', 'linewidth', 1.5);
-%                     plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
-                end
+%                 for n = find(obstacles)'
+%                     x = (stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0])*sy;
+%                     y = (stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0])*sx + self.aVars.IPM.xRange(1);
+% %                     newPts = self.aVars.IPM.transformSinglePoint(y, x);
+%                     plot(ax, x, y, 'y', 'linewidth', 1.5);
+% %                     plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
+%                 end
 
-                % Draw the path to the vanishing point
-                plot(ax, [0 ipmVP(2)], [0 ipmVP(1)], 'g', 'linewidth', 2)
+%                 % Draw the path to the vanishing point
+%                 plot(ax, [0 ipmVP(2)], [0 ipmVP(1)], 'g', 'linewidth', 2)
                 
-%                 % Draw the path planning results
-%                 plot(ax, x_s, y_s,'b'); plot(round(imsize(2)/2), imsize(1), 'x', vpx, vpy)
+                % Draw the path planning results
+                plot(ax, y_s*sy, x_s*sx+self.aVars.IPM.xRange(1),'Color', [0 .5 0], 'linewidth', 2); plot(0, 0, 'x', vpy*sy, vpx*sx+self.aVars.IPM.xRange(1), 'o')
 
                
                 %% Store the results window in a video
