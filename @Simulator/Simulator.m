@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-        MakeVideo = true;
-%         MakeVideo = false;
+%         MakeVideo = true;
+        MakeVideo = false;
         
         Lighting
     end
@@ -213,7 +213,7 @@ classdef Simulator < handle
             
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
-            for t = 0:delT:40
+            for t = 34.25%0:delT:40
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -340,10 +340,12 @@ classdef Simulator < handle
                 end
                 
                 %% Do the maze path following algorithm stuff
+                ipmVP = [28 300];
+                
                 % Get the current vanishing point estimate
                 origvpx = (ipmVP(1)-self.aVars.IPM.xRange(1))*size(ipmIm,1)/diff(self.aVars.IPM.xRange);
                 origvpy = ipmVP(2)*size(ipmIm,2)/diff(self.aVars.IPM.yRange);
-                
+                                
                 % Limit vp to point in image
                 m = (origvpx-size(ipmIm,1)/2)/origvpy;
                 vpy = size(ipmIm,2);
@@ -356,18 +358,18 @@ classdef Simulator < handle
                 smArea = 50;
                 se = strel('ball', smArea, smArea);
                 smoothedIm = smArea-imdilate(1-Im, se);
-                
-%                 % Figure out what direction the edges are going
-%                 LeftRight = [zeros(size(smoothedIm,1),1) diff(smoothedIm, [], 2)];
-%                 UpDown = [zeros(1,size(smoothedIm,2)); diff(smoothedIm, [], 1)];
-                
+                                
                 % Create a curve towards the vanishing point
                 [xx,yy] = meshgrid(1:imsize(2), 1:imsize(1));
-                dx = vpx - xx;
-                dy = vpy - yy;
+                dx = vpy - xx;
+                dy = vpx - yy;
                 newMag =  sqrt(dx.*dx + dy.*dy);
                 newMag = 1 - newMag / max(newMag(:));
 %                 newMag = newMag / max(newMag(:));
+
+                % Figure out what direction the edges are going
+                LeftRight = [zeros(size(smoothedIm,1),1) diff(smoothedIm, [], 2)];
+                UpDown = [zeros(1,size(smoothedIm,2)); diff(smoothedIm, [], 1)];
                 
                 % Create the GVF
                 mu = 0.2;
@@ -377,11 +379,13 @@ classdef Simulator < handle
                 u = fx;
                 v = fy;
                 newMag = padarray(newMag, [1 1], 'symmetric', 'both');
-                [fx2, fy2] = gradient(0*newMag);
+                [fx2, fy2] = gradient(newMag);
+                fx2 = fx2(2:end-1,2:end-1);
+                fy2 = fy2(2:end-1,2:end-1);
                 
                 gradMag = u.*u + v.*v;
                 
-                for n = 1:80
+                for n = 1:160
                     u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
                     v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
                     u = u + mu*4*del2(u) - gradMag.*(u-fx);
@@ -394,22 +398,22 @@ classdef Simulator < handle
                 edgeX = maxEdge*fx2./(hypot(fx2,fy2) + eps);
                 edgeY = maxEdge*fy2./(hypot(fx2,fy2) + eps);
                 
-%                 clockwise = true;
-%             %     clockwise = false;
-%                 if clockwise 
-%                     v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
-%                     v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
-%                     v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge/2;
-%                     v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge/2;
-%                 else
-%                     v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
-%                     v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
-%                     v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
-%                     v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
-%                 end    
-                
-%                 u(Im < 0.5) = edgeX(Im < 0.5);
-%                 v(Im < 0.5) = edgeY(Im < 0.5);
+                clockwise = true;
+%                 clockwise = false;
+                if clockwise 
+                    v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
+                    v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
+                    v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge/2;
+                    v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge/2;
+                else
+                    v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
+                    v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
+                    v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
+                    v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
+                end   
+
+                u(Im < 0.5) = edgeX(Im < 0.5);
+                v(Im < 0.5) = edgeY(Im < 0.5);                
 
                 magGVF = hypot(u,v) + 1e-10;
                 fx = u./magGVF;
@@ -417,7 +421,7 @@ classdef Simulator < handle
                 
                 % Create the initial snake coordinates
                 x_s = linspace(imsize(1)/2,vpx,10);
-                y_s = linspace(1,vpy,10);
+                y_s = linspace(80,vpy,10);
 
                 % Upsample & create a spline
                 steps = 0:(length(x_s)-1);
@@ -428,8 +432,8 @@ classdef Simulator < handle
                 
                 % Create the components of the Euler equation
                 % [Tension, rigidity, stepsize, energy portion]
-                alpha = 0.1;% 0.1;% 0.4;%0.5; 
-                beta = 0.75;%0.0;%0.5;
+                alpha = 0.4;% 0.1;% 0.4;%0.5; 
+                beta = 0.7;%0.0;%0.5;
                 gamma = 1;
                 kappa = 0.96;
                 A = imfilter(eye(length(newSteps)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
@@ -440,22 +444,22 @@ classdef Simulator < handle
                 invA = inv(U) * inv(L);
 
                 % Iteratively solve the Euler equations for x & y
-%                 tempFig = figure(999);
-%                 tempax = gca(tempFig);
-%                 cla(tempax);
-%                 imagesc(smoothedIm), colormap gray, hold on,
-%                 hSpline = plot(tempax, x_s, y_s, 'b');
+                tempFig = figure(999);
+                tempax = gca(tempFig);
+                cla(tempax);
+                imagesc(smoothedIm), colormap gray, hold on,
+                hSpline = plot(tempax, y_s, x_s, 'b-o');
                 
                 for n = 1:400
-                    newx = gamma*x_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
-                    newy = gamma*y_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
+                    newx = gamma*x_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
+                    newy = gamma*y_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
 
                     x_s = invA*newx;
                     y_s = invA*newy;
 
                     % Redistribute the points along the curve
                     x_s([1 end]) = [imsize(1)/2 vpx];
-                    y_s([1 end]) = [0 vpy];
+                    y_s([1 end]) = [80 vpy];
                     dStep = cumsum(hypot([0; diff(x_s)],[0; diff(y_s)]));
                     newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
 %                     dStep = cumsum(hypot(diff(x_s),diff(y_s)));
@@ -463,16 +467,16 @@ classdef Simulator < handle
                     x_s = interp1(dStep,x_s,newStep);
                     y_s = interp1(dStep,y_s,newStep);
                     
-%                     set(hSpline, 'XData', x_s, 'YData', y_s, 'Marker', 'o');
-%                     drawnow
+                    set(hSpline, 'XData', y_s, 'YData', x_s, 'Marker', 'o');
+                    drawnow
                 end
                 
 % %                 figure, hq = quiver(fx,fy); axis ij, axis image
-%                 figure(988)
-%                 cla
-%                 [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
-%                 ind = sub2ind(imsize, xx,yy);
-%                 quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
+                figure(988)
+                cla
+                [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
+                ind = sub2ind(imsize, xx,yy);
+                quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
                 
 %                 %}
                 
@@ -512,6 +516,7 @@ classdef Simulator < handle
                 plot(ax, y_s*sy, x_s*sx+self.aVars.IPM.xRange(1),'Color', [0 .5 0], 'linewidth', 2); plot(0, 0, 'x', vpy*sy, vpx*sx+self.aVars.IPM.xRange(1), 'o')
 
                
+                keyboard
                 %% Store the results window in a video
                 if self.MakeVideo
                     im = getframe(ax);
