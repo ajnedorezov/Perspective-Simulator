@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-        MakeVideo = true;
-%         MakeVideo = false;
+%         MakeVideo = true;
+        MakeVideo = false;
         
         Lighting
     end
@@ -206,14 +206,27 @@ classdef Simulator < handle
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('IPM_PathPlanning_Reinitializing.avi');
+                mov = VideoWriter('IPM_PathPlanning_PathMemory.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
             
+            % Create the initial snake coordinates
+            imsize = [545 1201];
+            x_s = linspace(imsize(1)/2,imsize(1)/2,10);
+            y_s = linspace(80,imsize(2),10);
+
+            % Upsample & create a spline
+            steps = 0:(length(x_s)-1);
+            newSteps = 0:0.05:(length(x_s)-1);
+            pp = spline(steps,[x_s' y_s']', newSteps);
+            x_s = pp(1,:)';
+            y_s = pp(2,:)';
+            
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
-            for t = 0:delT:40
+            tic
+            for t = 34.25;%0:delT:40
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -301,7 +314,7 @@ classdef Simulator < handle
                 
                 % Figure out the color of the roadway
                 roadPixel = ipmIm(round(size(ipmIm,1)/2) + (-5:5), 80+(0:5));
-                roadPixelRange = mean(roadPixel(:)) + 0.05*[-1 1];
+                roadPixelRange = median(roadPixel(:)) + 0.05*[-1 1];
                 
                 %% Detect obstacles by checking if its a horizontal streak
                 % Perform K-means to segment the image into different
@@ -446,18 +459,7 @@ classdef Simulator < handle
 
 %                 fx = u;
 %                 fy = v;
-                
-                % Create the initial snake coordinates
-                x_s = linspace(imsize(1)/2,vpx,10);
-                y_s = linspace(80,vpy,10);
-
-                % Upsample & create a spline
-                steps = 0:(length(x_s)-1);
-                newSteps = 0:0.05:(length(x_s)-1);
-                pp = spline(steps,[x_s' y_s']', newSteps);
-                x_s = pp(1,:)';
-                y_s = pp(2,:)';
-                
+                                
                 % Create the components of the Euler equation
                 % [Tension, rigidity, stepsize, energy portion]
                 alpha = 0.7;% 0.1;% 0.4;%0.5; 
@@ -555,6 +557,7 @@ classdef Simulator < handle
             if self.MakeVideo
                 close(mov)
             end
+            toc
         end
     end
     
