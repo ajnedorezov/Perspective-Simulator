@@ -55,7 +55,8 @@ imsize = size(readFrame(vid));
 binaryIm = zeros(imsize(1), imsize(2), 3);
 
 %%
-if true
+% if true
+if false
     myIPM = load('Examples\Road Surface Substraction\myIPM.mat');
     myIPM = myIPM.myIPM;    
 else

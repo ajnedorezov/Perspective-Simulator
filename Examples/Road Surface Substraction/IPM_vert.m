@@ -25,6 +25,7 @@ classdef IPM_vert < handle
         ySteps
         
         Indices
+        Weights
     end
     
     properties%(Dependent = true)
@@ -132,9 +133,59 @@ classdef IPM_vert < handle
             self.XWorld = Xvis;
             self.YWorld = Yvis;
             
-            tempImSize = [self.ImSize(1)-self.rHorizon+1, self.ImSize(2)];
-            indIm = reshape(1:prod(tempImSize), tempImSize);
-            self.Indices = griddata(self.XWorld, self.YWorld, indIm, self.xSteps, self.ySteps, 'nearest');
+%             tempImSize = [self.ImSize(1)-self.rHorizon+1, self.ImSize(2)];
+%             indIm = reshape(1:prod(tempImSize), tempImSize);
+            
+%             self.Indices = griddata(self.XWorld, self.YWorld, indIm, self.xSteps, self.ySteps, 'nearest');
+            %% Extract the weights and indices to compute the bilinear interpolation
+            ox = self.xSteps;
+            oy = self.ySteps;
+            nx = self.XWorld;
+            ny = self.YWorld;
+            
+            x1 = ones(size(nx));
+            x2 = ones(size(nx));
+            y1 = ones(size(ny));
+            y2 = ones(size(ny));
+            
+            
+            for r = 1:size(nx,1)
+                for c = 1:size(nx,2)
+                    b = ox - nx(r,c);
+                    b1 = b;
+                    b2 = b;
+                    b1(b>0) = nan;
+                    b2(b<=0) = nan;
+
+                    [~,x1(r,c)] = min(abs(b1), [], 2);
+                    [~,x2(r,c)] = min(abs(b2), [], 2);
+
+                    b = oy - ny(r,c);
+                    b1 = b;
+                    b2 = b;
+                    b1(b>0) = nan;
+                    b2(b<=0) = nan;
+
+                    [~,y1(r,c)] = min(abs(b1), [], 2);
+                    [~,y2(r,c)] = min(abs(b2), [], 2);
+                end
+            end
+            
+            % We have the indicies, now let's find the weights
+            ind00 = sub2ind(size(x), y1, x1);
+            ind01 = sub2ind(size(x), y1, x2);
+            ind10 = sub2ind(size(y), y2, x1);
+            ind11 = sub2ind(size(y), y2, x2);
+
+            denom = (x2-x1).*(y2-y1);
+            b11 = (x2-nx).*(y2-ny)./denom;
+            b12 = (x2-nx).*(ny-y1)./denom;
+            b21 = (nx-x1).*(y2-ny)./denom;
+            b22 = (nx-x1).*(ny-y1)./denom;
+
+            
+            self.Indices = {ind00 ind01; ind10 ind11};
+            self.Weights = {b11 b12; b21 b22};
         end
         
         function ptWorld = transformSinglePoint(self, x, y)
