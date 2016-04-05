@@ -23,12 +23,16 @@ oy = 1:n;
 
 [x,y] = meshgrid(1:m, 1:n);
 % [x,y] = meshgrid(fliplr(m./(1:m)), fliplr(n./(1:n)));
-[nx,ny] = meshgrid(1:2:m, 1:2:n);
+% [nx,ny] = meshgrid(1:2:m, 1:2:n);
 % [nx,ny] = meshgrid(1:0.25:m, 1:0.25:n);
 % nx = 1:0.25:m;
 % ny = 1:0.25:n;
+nx = 1:0.5:m;
+ny = 1:0.5:n;
 % nx = 1:2.5:m;
 % ny = 1:2.5:n;
+% nx = 1:2:m;
+% ny = 1:2:n;
 % 
 % I = im(:,:,2);
 % F = scatteredInterpolant(x(:),y(:),I(:), ...
@@ -74,13 +78,45 @@ for r = 1:length(ny)
 %         tInd(4) = find(dx > 0 & dy > 0, 1, 'first');
 %         tInd(3) = tInd(4)-1;
         tInd = [];
-        for n = 1:4
-            [~, ind] = min (d);
-            
-            tInd(n) = ind;
-            d(ind) = inf;
-        end
+%         for n = 1:4
+%             [~, ind] = min (d);
+%             
+%             tInd(n) = ind;
+%             d(ind) = inf;
+%         end
 %         [tx,ty] = ind2sub(size(x),tInd);
+
+        [~, ind] = min (d);
+
+        tInd(1) = ind;
+        % Get the adjacent pixels
+        isTop = mod(tInd(1), n) == 0;
+        isBottom = mod(tInd(1), n) == 1;
+        isLeft = tInd(1) <= n;
+        isRight = tInd(1) > n*(m-1);
+        
+        inds = nan(1,9);
+        if ~isTop
+            % Not at the top edge
+            if ~isLeft, inds(1) = tInd(1)+1-n; end
+            inds(2) = tInd(1)+1;
+            if ~isRight, inds(3) = tInd(1)+1+n; end
+        end
+        if ~isLeft, inds(4) = tInd(1)-n; end
+        if ~isRight, inds(6) = tInd(1)+n; end
+        if ~isBottom
+            % Not at the top edge
+            if ~isLeft, inds(7) = tInd(1)-1-n; end
+            inds(8) = tInd(1)-1;
+            if ~isRight, inds(9) = tInd(1)-1+n; end
+        end
+        minds = inds(~isnan(inds));
+        dist = d(minds);
+        for q = 2:3;
+            [~,i] = min(dist);
+            tInd(q) = minds(i);
+            dist(i) = inf;
+        end
         
         tx = x(tInd)';
         ty = y(tInd)';
@@ -119,6 +155,7 @@ for r = 1:length(ny)
 %         else
             A = dx.*dy./denom;
 %         end
+        A = A./norm(A);
         b11(r,c) = A(1);
         b12(r,c) = A(2);
         b21(r,c) = A(3);
