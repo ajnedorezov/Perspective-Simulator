@@ -14,21 +14,41 @@
 % [nx,ny] = meshgrid([1:25 26:0.5:50 55:5:100], [1:100]);
 
 %%
-im = double(imread('freeway.jpg'));
-origIm = im;
-[n,m,~] = size(im);
+% im = double(imread('freeway.jpg'));
+% origIm = im;
 
-ox = 1:m;
-oy = 1:n;
+% 
+% ox = 1:m;
+% oy = 1:n;
 
-[x,y] = meshgrid(1:m, 1:n);
+% [x,y] = meshgrid(1:m, 1:n);
 % [x,y] = meshgrid(fliplr(m./(1:m)), fliplr(n./(1:n)));
 % [nx,ny] = meshgrid(1:2:m, 1:2:n);
 % [nx,ny] = meshgrid(1:0.25:m, 1:0.25:n);
 % nx = 1:0.25:m;
 % ny = 1:0.25:n;
-nx = 1:0.5:m;
-ny = 1:0.5:n;
+
+vid = VideoReader('Downsampled To Work Video.avi');
+origIm = double(readFrame(vid));
+imsize = size(origIm);
+
+
+myIPM = IPM_vert(imsize(1:2),...
+        'cameraZ', 7,...
+        'theta', eps,...0.003125*pi/180,...atan(1/(2*1609.34)),...
+        'stepSize', [.125 .25],...
+        'xRange', [-50 50],...
+        'yRange', [0 350]);
+
+x = myIPM.XWorld;
+y = myIPM.YWorld;
+nx = myIPM.xSteps;
+ny = myIPM.ySteps;
+
+[n,m] = size(x);
+
+% nx = 1:0.5:m;
+% ny = 1:0.5:n;
 % nx = 1:2.5:m;
 % ny = 1:2.5:n;
 % nx = 1:2:m;
@@ -77,7 +97,7 @@ for r = 1:length(ny)
 % %         tInd(3) = find(dx > 0 & dy <= 0, 1, 'first');
 %         tInd(4) = find(dx > 0 & dy > 0, 1, 'first');
 %         tInd(3) = tInd(4)-1;
-        tInd = [];
+%         tInd = [];
 %         for n = 1:4
 %             [~, ind] = min (d);
 %             
@@ -86,7 +106,7 @@ for r = 1:length(ny)
 %         end
 %         [tx,ty] = ind2sub(size(x),tInd);
 
-        [~, ind] = min (d);
+        [~, ind] = min(d);
 
         tInd(1) = ind;
         % Get the adjacent pixels
@@ -95,32 +115,74 @@ for r = 1:length(ny)
         isLeft = tInd(1) <= n;
         isRight = tInd(1) > n*(m-1);
         
-        inds = nan(1,9);
-        if ~isTop
-            % Not at the top edge
-            if ~isLeft, inds(1) = tInd(1)+1-n; end
-            inds(2) = tInd(1)+1;
-            if ~isRight, inds(3) = tInd(1)+1+n; end
+        if isTop
+            tInd(1) = tInd(1)-1;
         end
-        if ~isLeft, inds(4) = tInd(1)-n; end
-        if ~isRight, inds(6) = tInd(1)+n; end
-        if ~isBottom
-            % Not at the top edge
-            if ~isLeft, inds(7) = tInd(1)-1-n; end
-            inds(8) = tInd(1)-1;
-            if ~isRight, inds(9) = tInd(1)-1+n; end
+        if isRight
+            tInd(1) = tInd(1)-n;
         end
-        minds = inds(~isnan(inds));
-        dist = d(minds);
-        for q = 2:3;
-            [~,i] = min(dist);
-            tInd(q) = minds(i);
-            dist(i) = inf;
+        if isLeft
+            tInd(1) = tInd(1)+n;
         end
+        
+        [pr,pc] = ind2sub(size(x),tInd);
+        dx = nx(c)-pc;
+        dy = ny(r)-pr;
+        
+        if dx >= 0 
+            if  dy >=0
+                % Lower left corner
+                tInd(2) = tInd(1)+1;
+                tInd(3) = tInd(1)+n;
+                tInd(4) = tInd(1)+n+1;
+            else
+                % Upper left corner
+                tInd(2) = tInd(1)-1;
+                tInd(3) = tInd(1)+n;
+                tInd(4) = tInd(1)+n-1;
+            end
+        else
+            if  dy >=0
+                % Lower right corner
+                tInd(2) = tInd(1)+1;
+                tInd(3) = tInd(1)-n;
+                tInd(4) = tInd(1)-n+1;
+            else
+                % Upper right corner
+                tInd(2) = tInd(1)-1;
+                tInd(3) = tInd(1)-n;
+                tInd(4) = tInd(1)-n-1;
+            end
+        end
+            
+        
+%         inds = nan(1,9);
+%         if ~isTop
+%             % Not at the top edge
+%             if ~isLeft, inds(1) = tInd(1)+1-n; end
+%             inds(2) = tInd(1)+1;
+%             if ~isRight, inds(3) = tInd(1)+1+n; end
+%         end
+%         if ~isLeft, inds(4) = tInd(1)-n; end
+%         if ~isRight, inds(6) = tInd(1)+n; end
+%         if ~isBottom
+%             % Not at the top edge
+%             if ~isLeft, inds(7) = tInd(1)-1-n; end
+%             inds(8) = tInd(1)-1;
+%             if ~isRight, inds(9) = tInd(1)-1+n; end
+%         end
+%         minds = inds(~isnan(inds));
+%         dist = d(minds);
+%         for q = 2:4;
+%             [~,i] = min(dist);
+%             tInd(q) = minds(i);
+%             dist(i) = inf;
+%         end
         
         tx = x(tInd)';
         ty = y(tInd)';
 %         F = [ones(4,1) tx ty tx.*ty ];
+%         
 %         if det(F) < eps
 %             A = [1;0;0;0];
 %         else
@@ -141,20 +203,20 @@ for r = 1:length(ny)
         ind10(r,c) = tInd(3);
         ind11(r,c) = tInd(4);
         
-        
-      
-
         ddx = (max(tx)-min(tx));
         ddy = (max(ty)-min(ty));
         denom = ddx*ddy;
         dx = ddx-abs((tx-nx(c)));
         dy = ddy-abs((ty-ny(r)));
-        tf = dx<eps&dy<eps;
+%         tf = dx<eps&dy<eps;
 %         if sum(tf) == 1
 %             A = double(tf);
 %         else
+        if all(sign(dx) > 0) || all(sign(dx) < 0) || all(sign(dy) > 0) || all(sign(dy) < 0)
+            A = zeros(1,4);
+        else
             A = dx.*dy./denom;
-%         end
+        end
         A = A./norm(A);
         b11(r,c) = A(1);
         b12(r,c) = A(2);
@@ -332,8 +394,8 @@ newIm = zeros([length(ny) length(nx),3]);
 for n = 1:3
     im = origIm(:,:,n);
     newIm(:,:,n) = im(ind00).*b11 ...
-            + im(ind01).*b21 ...
-            + im(ind10).*b12 ...
+            + im(ind01).*b12 ...
+            + im(ind10).*b21 ...
             + im(ind11).*b22;
 end
     
