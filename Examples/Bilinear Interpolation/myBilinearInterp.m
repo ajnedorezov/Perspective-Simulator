@@ -400,3 +400,15 @@ for n = 1:3
 end
     
 clf(figure(2)), imshow(uint8(newIm))
+
+
+newIm = zeros([length(ny) length(nx),3]);
+for n = 1:3
+    im = origIm(:,:,n);
+    newIm(:,:,n) = im(ind00).*b11 ...
+            + im(ind01).*b12 ...
+            + im(ind10).*b21 ...
+            + im(ind11).*b22;
+end
+    
+clf(figure(2)), imshow(uint8(newIm))
