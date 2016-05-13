@@ -28,12 +28,12 @@
 % nx = 1:0.25:m;
 % ny = 1:0.25:n;
 
-vid = VideoReader('Downsampled To Work Video.avi');
-origIm = double(readFrame(vid));
-imsize = size(origIm);
-
-% origIm = double(imread('BaseIm.png'));
+% vid = VideoReader('Downsampled To Work Video.avi');
+% origIm = double(readFrame(vid));
 % imsize = size(origIm);
+
+origIm = double(imread('BaseIm.png'));
+imsize = size(origIm);
 
 
 myIPM = IPM_vert(imsize(1:2),...
@@ -117,8 +117,8 @@ for r = 1:length(ny)
             
             if all(sign([w1 w2 w3]) >= 0) || all(sign([w1 w2 w3]) <= 0)
                 ind00(r,c) = TRI(t,1);
-                ind01(r,c) = TRI(t,1);
-                ind10(r,c) = TRI(t,1);
+                ind01(r,c) = TRI(t,2);
+                ind10(r,c) = TRI(t,3);
                 b11(r,c) = w1;
                 b12(r,c) = w2;
                 b21(r,c) = w3;
