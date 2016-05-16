@@ -136,56 +136,63 @@ classdef IPM_vert < handle
             tempImSize = [self.ImSize(1)-self.rHorizon+1, self.ImSize(2)];
             indIm = reshape(1:prod(tempImSize), tempImSize);
             
-            self.Indices = griddata(self.XWorld, self.YWorld, indIm, self.xSteps, self.ySteps, 'nearest');
-%             %% Extract the weights and indices to compute the bilinear interpolation
-%             ox = self.xSteps;
-%             oy = self.ySteps;
-%             nx = self.XWorld;
-%             ny = self.YWorld;
-%             
-%             x1 = ones(size(nx));
-%             x2 = ones(size(nx));
-%             y1 = ones(size(ny));
-%             y2 = ones(size(ny));
-%             
-%             
-%             for r = 1:size(nx,1)
-%                 for c = 1:size(nx,2)
-%                     b = ox - nx(r,c);
-%                     b1 = b;
-%                     b2 = b;
-%                     b1(b>0) = nan;
-%                     b2(b<=0) = nan;
-% 
-%                     [~,x1(r,c)] = min(abs(b1), [], 2);
-%                     [~,x2(r,c)] = min(abs(b2), [], 2);
-% 
-%                     b = oy - ny(r,c);
-%                     b1 = b;
-%                     b2 = b;
-%                     b1(b>0) = nan;
-%                     b2(b<=0) = nan;
-% 
-%                     [~,y1(r,c)] = min(abs(b1), [], 2);
-%                     [~,y2(r,c)] = min(abs(b2), [], 2);
-%                 end
-%             end
-%             
-%             % We have the indicies, now let's find the weights
-%             ind00 = sub2ind(size(x), y1, x1);
-%             ind01 = sub2ind(size(x), y1, x2);
-%             ind10 = sub2ind(size(y), y2, x1);
-%             ind11 = sub2ind(size(y), y2, x2);
-% 
-%             denom = (x2-x1).*(y2-y1);
-%             b11 = (x2-nx).*(y2-ny)./denom;
-%             b12 = (x2-nx).*(ny-y1)./denom;
-%             b21 = (nx-x1).*(y2-ny)./denom;
-%             b22 = (nx-x1).*(ny-y1)./denom;
-% 
-%             
-%             self.Indices = {ind00 ind01; ind10 ind11};
-%             self.Weights = {b11 b12; b21 b22};
+%             self.Indices = griddata(self.XWorld, self.YWorld, indIm, self.xSteps, self.ySteps, 'nearest');
+
+            %% Extract the weights and indices to compute the bilinear interpolation
+            ind1 = ones(length(self.ySteps), length(self.xSteps));
+            ind2 = ind1;
+            ind3 = ind1;
+            b1 = zeros(length(self.ySteps), length(self.xSteps));
+            b2 = b1;
+            b3 = b1;
+            tic
+
+            TRI = delaunay(self.XWorld,self.YWorld);
+            for r = 1:length(self.ySteps)
+                for c = 1:length(self.xSteps)
+                    % Find the triangles touching the closest point
+                    d = (self.XWorld(:) - self.xSteps(c)).^2 + (self.YWorld(:) - self.ySteps(r)).^2;
+                    [~, ind] = min(d);
+
+                    triInd = find(any(ismember(TRI, ind), 2));
+
+                    for t = triInd'
+                        % Loop over the different triangles and find the one that
+                        % contains this point
+
+                        tx = self.XWorld(TRI(t,:));
+                        ty = self.YWorld(TRI(t,:));
+
+                        A = [ones(1,3);
+                             tx
+                             ty];
+
+                        Ai = A; Ai(2:3,1) = [self.xSteps(c);self.ySteps(r)];
+                        Aj = A; Aj(2:3,2) = [self.xSteps(c);self.ySteps(r)];
+                        Ak = A; Ak(2:3,3) = [self.xSteps(c);self.ySteps(r)];
+                        detA = det(A);
+                        w1 = det(Ai)/detA;
+                        w2 = det(Aj)/detA;
+                        w3 = det(Ak)/detA;
+
+                        if all(sign([w1 w2 w3]) >= 0) || all(sign([w1 w2 w3]) <= 0)
+                            ind1(r,c) = TRI(t,1);
+                            ind2(r,c) = TRI(t,2);
+                            ind3(r,c) = TRI(t,3);
+                            b1(r,c) = w1;
+                            b2(r,c) = w2;
+                            b3(r,c) = w3;
+                            break
+                        end
+                    end 
+                end
+
+                disp(['Row: ' num2str(r) ' of ' num2str(length(self.ySteps))])
+
+            end
+            
+            self.Indices = {ind1 ind2 ind3};
+            self.Weights = {b1 b2 b3};
         end
         
         function ptWorld = transformSinglePoint(self, x, y)
@@ -230,7 +237,14 @@ classdef IPM_vert < handle
 %             [xx,yy] = meshgrid(self.xSteps, self.ySteps);
 %             outIm = F(xx,yy);
 
-            outIm = Icropped(self.Indices);
+%             outIm = Icropped(self.Indices);
+%             outIm = zeros([length(self.ySteps) length(self.xSteps),3]);
+%             for n = 1:3
+%                 outIm(:,:,n) = im(ind00).*b11 ...
+                outIm = Icropped(self.Indices{1}).*self.Weights{1} ...
+                        + Icropped(self.Indices{2}).*self.Weights{2} ...
+                        + Icropped(self.Indices{3}).*self.Weights{3};
+%             end
 
             if showFig > 0
                 figure(showFig)

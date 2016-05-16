@@ -234,4 +234,4 @@ for n = 1:3
             + im(ind10).*b21;
 end
     
-clf(figure(2)), imshow(fliplr(flipud(uint8(newIm))))
+clf(figure(2)), imshow(rot90(uint8(newIm),2))

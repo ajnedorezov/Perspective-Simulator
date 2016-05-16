@@ -42,7 +42,7 @@
 %% Test road substraction for video
 
 vid = VideoReader('Downsampled To Work Video.avi');
-myVid = VideoWriter('Road Surface Substraction - Planning.avi');
+myVid = VideoWriter('Road Surface Substraction - Barycentric Interp.avi');
 open(myVid);
 
 % sampleRegionI = (370:2:400)/2; %->
@@ -55,8 +55,8 @@ imsize = size(readFrame(vid));
 binaryIm = zeros(imsize(1), imsize(2), 3);
 
 %%
-% if true
-if false
+if true
+% if false
     myIPM = load('Examples\Road Surface Substraction\myIPM.mat');
     myIPM = myIPM.myIPM;    
 else
@@ -88,7 +88,9 @@ while hasFrame(vid)
         break
     end
     
-    vidFrame = readFrame(vid);
+    for n = 1:4
+        vidFrame = readFrame(vid);
+    end
 %     vidFrame = imresize(readFrame(vid),1/2);
 %     fprintf('Current Time: %f\n', vid.CurrentTime);
 %     if ~(vid.CurrentTime > 10 && vid.CurrentTime < 20)
@@ -278,7 +280,7 @@ while hasFrame(vid)
     
     
     writeVideo(myVid, getframe(figure(1)));
-
+    
     
 end
-% close(myVid)
+close(myVid)
