@@ -42,7 +42,7 @@
 %% Test road substraction for video
 
 vid = VideoReader('Downsampled To Work Video.avi');
-myVid = VideoWriter('Road Surface Substraction - Barycentric Interp.avi');
+myVid = VideoWriter('Road Surface Substraction - Barycentric Interp - FasterSnake.avi');
 open(myVid);
 
 % sampleRegionI = (370:2:400)/2; %->
@@ -88,9 +88,9 @@ while hasFrame(vid)
         break
     end
     
-    for n = 1:4
+%     for n = 1:4
         vidFrame = readFrame(vid);
-    end
+%     end
 %     vidFrame = imresize(readFrame(vid),1/2);
 %     fprintf('Current Time: %f\n', vid.CurrentTime);
 %     if ~(vid.CurrentTime > 10 && vid.CurrentTime < 20)
@@ -114,12 +114,12 @@ while hasFrame(vid)
 %     newVidFrame = binaryIm;
     
     clf(figure(1)), 
-    subplot(211), imshow(vidFrame)
+    subplot(121), imshow(vidFrame)
     title(sprintf('Current Time: %f', vid.CurrentTime))
     ylabel('Original')
 %     subplot(212), imshow(255*double(binaryIm))% imshow(newVidFrame)% 
 %     subplot(212), imagesc(grayIm)
-    ax = subplot(212); imagesc(newVidFrame)
+    ax = subplot(122); imagesc(newVidFrame)
     ylabel('IPM Road Surface Substracted')
     
     set(ax,'yDir','normal','xdir','reverse')
@@ -180,7 +180,7 @@ while hasFrame(vid)
 
     gradMag = u.*u + v.*v;
 
-    for n = 1:160
+    for n = 1:80%160
         u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
         v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
         u = u + mu*4*del2(u) - gradMag.*(u-fx);
@@ -254,7 +254,7 @@ while hasFrame(vid)
 %                 imagesc(smoothedIm), colormap gray, hold on,
 %                 hSpline = plot(tempax, y_s, x_s, 'b-o');
 
-    for n = 1:400
+    for n = 1:100%400
         newx = gamma*x_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
         newy = gamma*y_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
 
@@ -277,6 +277,7 @@ while hasFrame(vid)
     
     hold on
     plot(ax, y_s, x_s)
+    axis equal
     
     
     writeVideo(myVid, getframe(figure(1)));
