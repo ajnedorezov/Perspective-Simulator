@@ -115,22 +115,22 @@ classdef VPTracker < handle
     methods(Static)
         function lines = computeHough(edges)
     
-    % Perform the Hough transform
-    [H,T,R] = hough(edges);
-    
-    % Find the peaks in the Hough transform accumulator matrix
-    % corresponding to the line estimates
-    P  = houghpeaks(H,5,'threshold',ceil(0.3*max(H(:))));
+            % Perform the Hough transform
+            [H,T,R] = hough(edges);
 
-    % Find the equations fo the lines
-    lines = houghlines(edges,T,R,P,'FillGap',.25*min(size(edges)),'MinLength',7);
-    for k = 1:length(lines)
-        xy = [lines(k).point1; lines(k).point2];
-        xydiff = diff(xy, 1);
-        lines(k).plottheta = atan2(xydiff(2), xydiff(1));
-    end
+            % Find the peaks in the Hough transform accumulator matrix
+            % corresponding to the line estimates
+            P  = houghpeaks(H,5,'threshold',ceil(0.3*max(H(:))));
 
-end
+            % Find the equations fo the lines
+            lines = houghlines(edges,T,R,P,'FillGap',.25*min(size(edges)),'MinLength',7);
+            for k = 1:length(lines)
+                xy = [lines(k).point1; lines(k).point2];
+                xydiff = diff(xy, 1);
+                lines(k).plottheta = atan2(xydiff(2), xydiff(1));
+            end
+
+        end
 
         function pts = findVert(A, b)
             pts = [];

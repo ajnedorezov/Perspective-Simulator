@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-%         MakeVideo = true;
-        MakeVideo = false;
+        MakeVideo = true;
+%         MakeVideo = false;
         
         Lighting
     end
@@ -194,27 +194,41 @@ classdef Simulator < handle
             self.aVars.VPTracker = VPTracker(1000, self.aVars.imsize);
             
             %% Initialize the Inverse Perspective Mapping (IPM) class
-            self.aVars.IPM = IPM(fliplr(self.aVars.imsize),...
-                'cameraZ', 4.4,...
-                'theta', atan(self.CameraParams.height/self.DriverParams.lookAheadDistance),...
-                'stepSize', [.125 .25],...
-                'xRange', [-34 34],...
-                'yRange', [0 300]);  % 328.084]);
+            if true
+                savedIPM = load('@IPM\myIPM.mat');
+                self.aVars.IPM = savedIPM.myIPM;
+            else
+                myIPM = IPM(fliplr(self.aVars.imsize),...
+                    'cameraZ', 4.4,...
+                    'theta', atan(self.CameraParams.height/self.DriverParams.lookAheadDistance),...
+                    'stepSize', [.125 .25],...
+                    'xRange', [-34 34],...
+                    'yRange', [0 300]);  % 328.084]);
+                self.aVars.IPM = myIPM;
+                save('myIPM.mat', 'myIPM');
+            end
+            
+            self.aVars.sampleRegionI = 400:450; %->
+            self.aVars.sampleRegionJ = 270:370; %v
+            self.aVars.intensityRange = 35;
             
         end
         
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('IPM_PathPlanning_PathMemory.avi');
+                mov = VideoWriter('IPM_PathPlanning_PathMemory_RoadRemoval.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
             
             % Create the initial snake coordinates
-            imsize = [545 1201];
-            x_s = linspace(imsize(1)/2,imsize(1)/2,10);
-            y_s = linspace(80,imsize(2),10);
+%             imsize = [545 1201];
+            imsize = [1201 545];
+%             x_s = linspace(imsize(1)/2,imsize(1)/2,10);
+%             y_s = linspace(80,imsize(2),10);
+            x_s = linspace(0,imsize(1),10);
+            y_s = linspace(imsize(2)/2,imsize(2)/2,10);
 
             % Upsample & create a spline
             steps = 0:(length(x_s)-1);
@@ -226,7 +240,7 @@ classdef Simulator < handle
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
             tic
-            for t = 34.25;%0:delT:40
+            for t = 0:delT:40% 34.25;%
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -306,11 +320,28 @@ classdef Simulator < handle
                 end
                 %}
                 
-                %% Perform the IPM
-                ipmIm = self.aVars.IPM.performTransformation(double(rgb2gray(rgb))/255);
-                ipmIm = rot90(ipmIm);
+                binaryIm = zeros(size(rgb,1), size(rgb,2), 3);
+                for n = 1:3
+                    channel = rgb(:,:,n);
+                    roadRegion = channel(self.aVars.sampleRegionI, self.aVars.sampleRegionJ);
+                    avgPixelInt = mean(roadRegion(:));
+                    binaryIm(:,:,n) = channel < (avgPixelInt-self.aVars.intensityRange) | channel > (avgPixelInt + self.aVars.intensityRange);
+                end
+                ind = sum(binaryIm,3)==0;
                 
-                ipmVP = self.aVars.IPM.transformSinglePoint([self.aVars.IPM.rHorizon, self.aVars.VPTracker.prior.mean(1)]);
+                
+                %% Perform the IPM
+%                 ipmIm = self.aVars.IPM.performTransformation(double(rgb2gray(rgb))/255);
+%                 ipmIm = rot90(ipmIm);
+                for n = 1:3
+                    channel = binaryIm(:,:,n);
+                    channel(ind) = 0;
+                    ipmIm(:,:,n) = self.aVars.IPM.performTransformation(double(channel));
+                end
+%                 ipmIm = rot90(ipmIm,2);
+                ipmIm = rgb2gray(ipmIm);
+                
+                ipmVP = self.aVars.IPM.transformSinglePoint([self.aVars.VPTracker.prior.mean(2) self.aVars.IPM.rHorizon]);
                 
                 % Figure out the color of the roadway
                 roadPixel = ipmIm(round(size(ipmIm,1)/2) + (-5:5), 80+(0:5));
@@ -319,7 +350,7 @@ classdef Simulator < handle
                 %% Detect obstacles by checking if its a horizontal streak
                 % Perform K-means to segment the image into different
                 % regions
-                numCusters = 6;
+                numCusters = 3;
                 
                 ipmIm(isnan(ipmIm)) = -1;
                 [IDX, centers] = kmeans(ipmIm(:), numCusters);
@@ -354,23 +385,24 @@ classdef Simulator < handle
                 % should be avoided
                 obstacles = false(length(stats),1);
                 for n = 1:length(stats)
-                    obstacles(n) = ~ismember(n, roadLabels) && stats(n).BoundingBox(3) > 100 && stats(n).BoundingBox(3) > stats(n).BoundingBox(4) && stats(n).BoundingBox(4) > 30;
+                    obstacles(n) = ~ismember(n, roadLabels) && stats(n).BoundingBox(4) > 100 && stats(n).BoundingBox(4) > stats(n).BoundingBox(3) && stats(n).BoundingBox(3) > 30;
                 end
                 
                 %% Do the maze path following algorithm stuff
 %                 ipmVP = [15 300];
                 
                 % Get the current vanishing point estimate
-                origvpx = (ipmVP(1)-self.aVars.IPM.xRange(1))*size(ipmIm,1)/diff(self.aVars.IPM.xRange);
-                origvpy = ipmVP(2)*size(ipmIm,2)/diff(self.aVars.IPM.yRange);
+%                 origvpx = (ipmVP(1)-self.aVars.IPM.xRange(1))*size(ipmIm,1)/diff(self.aVars.IPM.xRange);
+%                 origvpy = ipmVP(2)*size(ipmIm,2)/diff(self.aVars.IPM.yRange);
                                 
                 % Limit vp to point in image
-                m = (origvpx-size(ipmIm,1)/2)/origvpy;
-                vpy = size(ipmIm,2);
-                vpx = vpy*m + size(ipmIm,1)/2;
+                m = (ipmVP(1)-size(ipmIm,2)/2)/ipmVP(2);
+                vpx = size(ipmIm,1);
+                vpy = vpx*m + size(ipmIm,2)/2;
                 
                 % Create an edge map for the path planning
-                Im = ismember(newLabels, find(obstacles));
+                %Im = ismember(newLabels, find(obstacles));
+                Im = ipmIm > 0;%rgb2gray(ipmIm) > 0;
                 imsize = size(Im);
                 
                 smArea = 50;
@@ -406,7 +438,7 @@ classdef Simulator < handle
                 
                 gradMag = u.*u + v.*v;
                 
-                for n = 1:160
+                for n = 1:80
                     u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
                     v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
                     u = u + mu*4*del2(u) - gradMag.*(u-fx);
@@ -480,7 +512,7 @@ classdef Simulator < handle
 %                 imagesc(smoothedIm), colormap gray, hold on,
 %                 hSpline = plot(tempax, y_s, x_s, 'b-o');
                 
-                for n = 1:400
+                for n = 1:100%400
                     newx = gamma*x_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
                     newy = gamma*y_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
 
@@ -488,8 +520,14 @@ classdef Simulator < handle
                     y_s = invA*newy;
 
                     % Redistribute the points along the curve
-                    x_s([1 end]) = [imsize(1)/2 vpx];
-                    y_s([1 end]) = [80 vpy];
+%                     ind = find(diff(x_s)<0);
+%                     x_s(ind(ind<length(x_s)/2)) = 0;
+%                     y_s(ind(ind<length(x_s)/2)) = imsize(2)/2;
+%                     x_s(ind(ind>=length(x_s)/2)) = vpx;
+%                     y_s(ind(ind>=length(x_s)/2)) = vpy;
+                    
+                    x_s([1 end]) = [0 vpx];
+                    y_s([1 end]) = [imsize(2)/2 vpy];
                     dStep = cumsum(hypot([0; diff(x_s)],[0; diff(y_s)]));
                     newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
 %                     dStep = cumsum(hypot(diff(x_s),diff(y_s)));
@@ -515,35 +553,47 @@ classdef Simulator < handle
                 figure(self.hResultsWindow);
                 ax = gca(self.hResultsWindow);
                 cla(ax)
+               
 %                 imshow(rgb, 'Parent', ax); hold on,
 %                 imagesc(labels, 'Parent', ax); hold on,
 %                 imagesc(ipmIm, 'Parent', ax); colormap gray, hold on, 
-                
-%                 imshowpair(ismember(newLabels, find(obstacles)), ipmIm, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
-                RA = imref2d(size(ipmIm),self.aVars.IPM.yRange, self.aVars.IPM.xRange);
-                imshowpair(ismember(newLabels, find(obstacles)), RA, ipmIm, RA, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
-%                 imagesc(smoothedIm, 'Parent', ax); colormap gray, hold on, 
-                title(sprintf('Time %0.2f', t))
+%                 imagesc(self.aVars.IPM.xRange, fliplr(self.aVars.IPM.yRange), ipmIm, 'Parent', ax); colormap gray, hold on, 
                
+                
+                imshowpair(ismember(newLabels, find(obstacles)), ipmIm, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
+% %                 RA = imref2d(size(ipmIm),self.aVars.IPM.yRange, self.aVars.IPM.xRange);
+%                 RA = imref2d(size(ipmIm),self.aVars.IPM.xRange, self.aVars.IPM.yRange);
+%                 imshowpair(ismember(newLabels, find(obstacles)), RA, ipmIm, RA, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
+% %                 set(ax,'YTickLabel', flipud(get(ax,'YTickLabel')))
+% %                 imagesc(smoothedIm, 'Parent', ax); colormap gray, hold on, 
+                title(sprintf('Time %0.2f', t))
+                axis equal tight
+                set(ax,'yDir','normal','xdir','reverse')
+                
+                
 %                 % Draw the VP Results
 %                 self.aVars.VPTracker.PlotResults(ax, 0);
 
                 % Draw bounding boxes around the obstacles
                 sx = diff(self.aVars.IPM.xRange)/size(ipmIm,1);
                 sy = diff(self.aVars.IPM.yRange)/size(ipmIm,2);
-%                 for n = find(obstacles)'
+                for n = find(obstacles)'
 %                     x = (stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0])*sy;
 %                     y = (stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0])*sx + self.aVars.IPM.xRange(1);
 % %                     newPts = self.aVars.IPM.transformSinglePoint(y, x);
-%                     plot(ax, x, y, 'y', 'linewidth', 1.5);
-% %                     plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
-%                 end
+% %                     plot(ax, x, y, 'y', 'linewidth', 1.5);
+%                     plot(ax, y, x, 'y', 'linewidth', 1.5);
+%                     plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
+                    plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
+                end
 
 %                 % Draw the path to the vanishing point
 %                 plot(ax, [0 ipmVP(2)], [0 ipmVP(1)], 'g', 'linewidth', 2)
                 
                 % Draw the path planning results
-                plot(ax, y_s*sy, x_s*sx+self.aVars.IPM.xRange(1),'Color', [0 .5 0], 'linewidth', 2); plot(20, 0, 'x', vpy*sy, vpx*sx+self.aVars.IPM.xRange(1), 'o')
+%                 plot(ax, y_s*sy, x_s*sx+self.aVars.IPM.xRange(1),'Color', [0 .5 0], 'linewidth', 2); plot(20, 0, 'x', vpy*sy, vpx*sx+self.aVars.IPM.xRange(1), 'o')
+%                 plot(ax, x_s*sx+self.aVars.IPM.xRange(1), y_s*sy,'Color', [0 .5 0], 'linewidth', 2); plot(0, 20, 'x', vpx*sx+self.aVars.IPM.xRange(1), vpy*sy, 'o')
+                plot(ax, y_s, x_s, 'Color', [0 .5 0], 'linewidth', 2); plot(imsize(2)/2, 0, 'x', vpy, vpx, 'o')
 
                
 %                 keyboard

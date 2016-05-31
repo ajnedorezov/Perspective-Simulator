@@ -23,6 +23,9 @@ classdef IPM < handle
         rHorizon
         xSteps
         ySteps
+        
+        Indices
+        Weights
     end
     
     properties%(Dependent = true)
@@ -129,6 +132,67 @@ classdef IPM < handle
             
             self.XWorld = Xvis;
             self.YWorld = Yvis;
+            
+            tempImSize = [self.ImSize(1)-self.rHorizon+1, self.ImSize(2)];
+            indIm = reshape(1:prod(tempImSize), tempImSize);
+            
+%             self.Indices = griddata(self.XWorld, self.YWorld, indIm, self.xSteps, self.ySteps, 'nearest');
+
+            %% Extract the weights and indices to compute the bilinear interpolation
+            ind1 = ones(length(self.ySteps), length(self.xSteps));
+            ind2 = ind1;
+            ind3 = ind1;
+            b1 = zeros(length(self.ySteps), length(self.xSteps));
+            b2 = b1;
+            b3 = b1;
+            tic
+
+            TRI = delaunay(self.XWorld,self.YWorld);
+            for r = 1:length(self.ySteps)
+                for c = 1:length(self.xSteps)
+                    % Find the triangles touching the closest point
+                    d = (self.XWorld(:) - self.xSteps(c)).^2 + (self.YWorld(:) - self.ySteps(r)).^2;
+                    [~, ind] = min(d);
+
+                    triInd = find(any(ismember(TRI, ind), 2));
+
+                    for t = triInd'
+                        % Loop over the different triangles and find the one that
+                        % contains this point
+
+                        tx = self.XWorld(TRI(t,:));
+                        ty = self.YWorld(TRI(t,:));
+
+                        A = [ones(1,3);
+                             tx
+                             ty];
+
+                        Ai = A; Ai(2:3,1) = [self.xSteps(c);self.ySteps(r)];
+                        Aj = A; Aj(2:3,2) = [self.xSteps(c);self.ySteps(r)];
+                        Ak = A; Ak(2:3,3) = [self.xSteps(c);self.ySteps(r)];
+                        detA = det(A);
+                        w1 = det(Ai)/detA;
+                        w2 = det(Aj)/detA;
+                        w3 = det(Ak)/detA;
+
+                        if all(sign([w1 w2 w3]) >= 0) || all(sign([w1 w2 w3]) <= 0)
+                            ind1(r,c) = TRI(t,1);
+                            ind2(r,c) = TRI(t,2);
+                            ind3(r,c) = TRI(t,3);
+                            b1(r,c) = w1;
+                            b2(r,c) = w2;
+                            b3(r,c) = w3;
+                            break
+                        end
+                    end 
+                end
+
+                disp(['Row: ' num2str(r) ' of ' num2str(length(self.ySteps))])
+
+            end
+            
+            self.Indices = {ind1 ind2 ind3};
+            self.Weights = {b1 b2 b3};
         end
         
         function ptWorld = transformSinglePoint(self, x, y)
@@ -167,11 +231,20 @@ classdef IPM < handle
             end
             Icropped = grayIm(self.rHorizon:end,:);
             
-            outIm = griddata(self.XWorld, self.YWorld, Icropped, self.xSteps, self.ySteps, 'linear');
+%             outIm = griddata(self.XWorld, self.YWorld, Icropped, self.xSteps, self.ySteps, 'linear');
 %             outIm = griddata(self.XWorld, self.YWorld, Icropped, self.xSteps, self.ySteps, 'nearest');
 %             F = scatteredInterpolant(self.XWorld(:), self.YWorld(:), Icropped(:));
 %             [xx,yy] = meshgrid(self.xSteps, self.ySteps);
 %             outIm = F(xx,yy);
+
+%             outIm = Icropped(self.Indices);
+%             outIm = zeros([length(self.ySteps) length(self.xSteps),3]);
+%             for n = 1:3
+%                 outIm(:,:,n) = im(ind00).*b11 ...
+                outIm = Icropped(self.Indices{1}).*self.Weights{1} ...
+                        + Icropped(self.Indices{2}).*self.Weights{2} ...
+                        + Icropped(self.Indices{3}).*self.Weights{3};
+%             end
 
             if showFig > 0
                 figure(showFig)
