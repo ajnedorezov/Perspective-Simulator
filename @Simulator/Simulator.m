@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-        MakeVideo = true;
-%         MakeVideo = false;
+%         MakeVideo = true;
+        MakeVideo = false;
         
         Lighting
     end
@@ -87,6 +87,9 @@ classdef Simulator < handle
             %% Start the simulation
             self.InitializeAlgorithm();
             
+            if nargin > 0
+                return
+            end
             self.Simulate();
         end
         
@@ -341,7 +344,9 @@ classdef Simulator < handle
 %                 ipmIm = rot90(ipmIm,2);
                 ipmIm = rgb2gray(ipmIm);
                 
-                ipmVP = self.aVars.IPM.transformSinglePoint([self.aVars.VPTracker.prior.mean(2) self.aVars.IPM.rHorizon]);
+%                 ipmVP = self.aVars.IPM.transformSinglePoint([self.aVars.VPTracker.prior.mean(2) self.aVars.IPM.rHorizon]);
+                ipmVP = self.aVars.IPM.transformSinglePoint(max(self.aVars.VPTracker.prior.mean(2), self.aVars.IPM.rHorizon), self.aVars.VPTracker.prior.mean(1));
+%                 ipmVP = self.aVars.IPM.transformSinglePoint(self.aVars.VPTracker.prior.mean(1), max(self.aVars.VPTracker.prior.mean(2), self.aVars.IPM.rHorizon));
                 
                 % Figure out the color of the roadway
                 roadPixel = ipmIm(round(size(ipmIm,1)/2) + (-5:5), 80+(0:5));
@@ -350,7 +355,7 @@ classdef Simulator < handle
                 %% Detect obstacles by checking if its a horizontal streak
                 % Perform K-means to segment the image into different
                 % regions
-                numCusters = 3;
+                numCusters = 6;
                 
                 ipmIm(isnan(ipmIm)) = -1;
                 [IDX, centers] = kmeans(ipmIm(:), numCusters);
@@ -392,163 +397,172 @@ classdef Simulator < handle
 %                 ipmVP = [15 300];
                 
                 % Get the current vanishing point estimate
-%                 origvpx = (ipmVP(1)-self.aVars.IPM.xRange(1))*size(ipmIm,1)/diff(self.aVars.IPM.xRange);
-%                 origvpy = ipmVP(2)*size(ipmIm,2)/diff(self.aVars.IPM.yRange);
+                origvpx = (ipmVP(1)-self.aVars.IPM.xRange(1))*size(ipmIm,2)/diff(self.aVars.IPM.xRange);
+                origvpy = (ipmVP(2)-self.aVars.IPM.yRange(1))*size(ipmIm,1)/diff(self.aVars.IPM.yRange);
                                 
                 % Limit vp to point in image
-                m = (ipmVP(1)-size(ipmIm,2)/2)/ipmVP(2);
-                vpx = size(ipmIm,1);
-                vpy = vpx*m + size(ipmIm,2)/2;
+                m = (origvpx-size(ipmIm,2)/2)/origvpy;
+                vpy = size(ipmIm,1);
+                vpx = vpy*m + size(ipmIm,2)/2;
+%                 vpx = origvpx;
+%                 vpy = origvpy;
                 
-                % Create an edge map for the path planning
-                %Im = ismember(newLabels, find(obstacles));
-                Im = ipmIm > 0;%rgb2gray(ipmIm) > 0;
-                imsize = size(Im);
-                
-                smArea = 50;
-                se = strel('ball', smArea, smArea);
-                smoothedIm = smArea-imdilate(1-Im, se);
-                                
-                % Create a curve towards the vanishing point
-                [xx,yy] = meshgrid(1:imsize(2), 1:imsize(1));
-                dx = vpy - xx;
-                dy = vpx - yy;
-                newMag =  sqrt(dx.*dx + dy.*dy);
-                newMag = 1 - newMag / max(newMag(:));
-%                 newMag = newMag / max(newMag(:));
-
-%                 % Figure out what direction the edges are going
-%                 LeftRight = [zeros(size(smoothedIm,1),1) diff(smoothedIm, [], 2)];
-%                 UpDown = [zeros(1,size(smoothedIm,2)); diff(smoothedIm, [], 1)];
-% %                 h = fspecial('gaussian', [5 5]);
-% %                 LeftRight = imfilter(LeftRight, h);
-% %                 UpDown = imfilter(UpDown, h);
-                
-                % Create the GVF
-                mu = 0.2;
-                smoothedIm = padarray(smoothedIm, [1 1], 'symmetric', 'both');
-                [fx,fy] = gradient(-smoothedIm);
-                
-                u = fx;
-                v = fy;
-                newMag = padarray(newMag, [1 1], 'symmetric', 'both');
-                [fx2, fy2] = gradient(newMag);
-                fx2 = fx2(2:end-1,2:end-1);
-                fy2 = fy2(2:end-1,2:end-1);
-                
-                gradMag = u.*u + v.*v;
-                
-                for n = 1:80
-                    u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
-                    v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
-                    u = u + mu*4*del2(u) - gradMag.*(u-fx);
-                    v = v + mu*4*del2(v) - gradMag.*(v-fy);
-                end
-                u = u(2:end-1,2:end-1);
-                v = v(2:end-1,2:end-1);
-
-                maxEdge = max(max(hypot(u,v))); %0.25
-                edgeX = maxEdge*fx2./(hypot(fx2,fy2) + eps);
-                edgeY = maxEdge*fy2./(hypot(fx2,fy2) + eps);
-                
-%                 clockwise = true;
-% %                 clockwise = false;
-%                 if clockwise 
-%                     v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
-%                     v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
-%                     v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge/2;
-%                     v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge/2;
-%                 else
-%                     v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
-%                     v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
-%                     v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
-%                     v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
-%                 end   
-
-%                 se = strel('ball', 13, 13);
-%                 ind = imdilate(double(Im > 0.5), se);
-%                 ind = ~logical(ind-min(ind(:)));
+                1;
+%                 % Create an edge map for the path planning
+%                 %Im = ismember(newLabels, find(obstacles));
+%                 Im = ipmIm > 0;%rgb2gray(ipmIm) > 0;s
+%                 imsize = size(Im);
+%                 
+%                 smArea = 50;
+%                 se = strel('ball', smArea, smArea);
+%                 smoothedIm = smArea-imdilate(1-Im, se);
+%                                 
+%                 % Create a curve towards the vanishing point
+%                 [xx,yy] = meshgrid(1:imsize(2), 1:imsize(1));
+%                 dx = vpy - xx;
+%                 dy = vpx - yy;
+%                 newMag =  sqrt(dx.*dx + dy.*dy);
+%                 newMag = 1 - newMag / max(newMag(:));
+% %                 newMag = newMag / max(newMag(:));
 % 
-%                 u(ind) = edgeX(ind);
-%                 v(ind) = edgeY(ind);
-% %                 u(Im < 0.5) = edgeX(Im < 0.5);
-% %                 v(Im < 0.5) = edgeY(Im < 0.5);
-
-%                 ind = hypot(u,v) < 1e-4;
-%                 u(ind) = edgeX(ind);
-%                 v(ind) = edgeY(ind);
-                
-                u = u + edgeX/2;
-                v = v + edgeY/2;
-
-%                 ind = hypot(u,v) < 1e-2;
-%                 u(ind) = u(ind) + edgeX(ind)/10;
-%                 v(ind) = v(ind) + edgeY(ind)/10;
-
-                magGVF = hypot(u,v) + 1e-10;
-                fx = u./magGVF;
-                fy = v./magGVF;
-
-%                 fx = u;
-%                 fy = v;
-                                
-                % Create the components of the Euler equation
-                % [Tension, rigidity, stepsize, energy portion]
-                alpha = 0.7;% 0.1;% 0.4;%0.5; 
-                beta = 0.5;%0.0;%0.5;
-                gamma = 1;
-                kappa = 1;
-                A = imfilter(eye(length(newSteps)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
-
-                % Compute the inverse of A by LU decompositions since it is a
-                % pentadiagonal banded matrix
-                [L,U] = lu(A + gamma*eye(size(A)));
-                invA = inv(U) * inv(L);
-
-                % Iteratively solve the Euler equations for x & y
-%                 tempFig = figure(999);
-%                 tempax = gca(tempFig);
-%                 cla(tempax);
-%                 imagesc(smoothedIm), colormap gray, hold on,
-%                 hSpline = plot(tempax, y_s, x_s, 'b-o');
-                
-                for n = 1:100%400
-                    newx = gamma*x_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
-                    newy = gamma*y_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
-
-                    x_s = invA*newx;
-                    y_s = invA*newy;
-
-                    % Redistribute the points along the curve
-%                     ind = find(diff(x_s)<0);
-%                     x_s(ind(ind<length(x_s)/2)) = 0;
-%                     y_s(ind(ind<length(x_s)/2)) = imsize(2)/2;
-%                     x_s(ind(ind>=length(x_s)/2)) = vpx;
-%                     y_s(ind(ind>=length(x_s)/2)) = vpy;
-                    
-                    x_s([1 end]) = [0 vpx];
-                    y_s([1 end]) = [imsize(2)/2 vpy];
-                    dStep = cumsum(hypot([0; diff(x_s)],[0; diff(y_s)]));
-                    newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
-%                     dStep = cumsum(hypot(diff(x_s),diff(y_s)));
+% %                 % Figure out what direction the edges are going
+% %                 LeftRight = [zeros(size(smoothedIm,1),1) diff(smoothedIm, [], 2)];
+% %                 UpDown = [zeros(1,size(smoothedIm,2)); diff(smoothedIm, [], 1)];
+% % %                 h = fspecial('gaussian', [5 5]);
+% % %                 LeftRight = imfilter(LeftRight, h);
+% % %                 UpDown = imfilter(UpDown, h);
+%                 
+%                 % Create the GVF
+%                 mu = 0.2;
+%                 smoothedIm = padarray(smoothedIm, [1 1], 'symmetric', 'both');
+%                 [fx,fy] = gradient(-smoothedIm);
+%                 
+%                 u = fx;
+%                 v = fy;
+%                 newMag = padarray(newMag, [1 1], 'symmetric', 'both');
+%                 [fx2, fy2] = gradient(newMag);
+%                 fx2 = fx2(2:end-1,2:end-1);
+%                 fy2 = fy2(2:end-1,2:end-1);
+%                 
+%                 gradMag = u.*u + v.*v;
+%                 
+%                 for n = 1:80
+%                     u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
+%                     v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
+%                     u = u + mu*4*del2(u) - gradMag.*(u-fx);
+%                     v = v + mu*4*del2(v) - gradMag.*(v-fy);
+%                 end
+%                 u = u(2:end-1,2:end-1);
+%                 v = v(2:end-1,2:end-1);
+% 
+%                 maxEdge = max(max(hypot(u,v))); %0.25
+%                 edgeX = maxEdge*fx2./(hypot(fx2,fy2) + eps);
+%                 edgeY = maxEdge*fy2./(hypot(fx2,fy2) + eps);
+%                 
+% %                 clockwise = true;
+% % %                 clockwise = false;
+% %                 if clockwise 
+% %                     v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
+% %                     v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
+% %                     v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge/2;
+% %                     v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge/2;
+% %                 else
+% %                     v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
+% %                     v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
+% %                     v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
+% %                     v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
+% %                 end   
+% 
+% %                 se = strel('ball', 13, 13);
+% %                 ind = imdilate(double(Im > 0.5), se);
+% %                 ind = ~logical(ind-min(ind(:)));
+% % 
+% %                 u(ind) = edgeX(ind);
+% %                 v(ind) = edgeY(ind);
+% % %                 u(Im < 0.5) = edgeX(Im < 0.5);
+% % %                 v(Im < 0.5) = edgeY(Im < 0.5);
+% 
+% %                 ind = hypot(u,v) < 1e-4;
+% %                 u(ind) = edgeX(ind);
+% %                 v(ind) = edgeY(ind);
+%                 
+%                 u = u + edgeX/2;
+%                 v = v + edgeY/2;
+% 
+% %                 ind = hypot(u,v) < 1e-2;
+% %                 u(ind) = u(ind) + edgeX(ind)/10;
+% %                 v(ind) = v(ind) + edgeY(ind)/10;
+% 
+%                 magGVF = hypot(u,v) + 1e-10;
+%                 fx = u./magGVF;
+%                 fy = v./magGVF;
+% 
+% %                 fx = u;
+% %                 fy = v;
+%                                 
+%                 % Create the components of the Euler equation
+%                 % [Tension, rigidity, stepsize, energy portion]
+%                 alpha = 0.7;% 0.1;% 0.4;%0.5; 
+%                 beta = 0.5;%0.0;%0.5;
+%                 gamma = 1;
+%                 kappa = 1;
+%                 A = imfilter(eye(length(newSteps)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
+% 
+%                 % Compute the inverse of A by LU decompositions since it is a
+%                 % pentadiagonal banded matrix
+%                 [L,U] = lu(A + gamma*eye(size(A)));
+%                 invA = inv(U) * inv(L);
+% 
+%                 % Iteratively solve the Euler equations for x & y
+% %                 tempFig = figure(999);
+% %                 tempax = gca(tempFig);
+% %                 cla(tempax);
+% %                 imagesc(smoothedIm), colormap gray, hold on,
+% %                 hSpline = plot(tempax, y_s, x_s, 'b-o');
+%                 
+%                 for n = 1:100%400
+%                     newx = gamma*x_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
+%                     newy = gamma*y_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
+% 
+%                     x_s = invA*newx;
+%                     y_s = invA*newy;
+% 
+%                     % Redistribute the points along the curve
+% %                     ind = find(diff(x_s)<0);
+% %                     x_s(ind(ind<length(x_s)/2)) = 0;
+% %                     y_s(ind(ind<length(x_s)/2)) = imsize(2)/2;
+% %                     x_s(ind(ind>=length(x_s)/2)) = vpx;
+% %                     y_s(ind(ind>=length(x_s)/2)) = vpy;
+%                     
+%                     x_s([1 end]) = [0 vpx];
+%                     y_s([1 end]) = [imsize(2)/2 vpy];
+%                     dStep = cumsum(hypot([0; diff(x_s)],[0; diff(y_s)]));
 %                     newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
-                    x_s = interp1(dStep,x_s,newStep);
-                    y_s = interp1(dStep,y_s,newStep);
-                    
-%                     set(hSpline, 'XData', y_s, 'YData', x_s, 'Marker', 'o');
-%                     drawnow
-                end
-                
-% %                 figure, hq = quiver(fx,fy); axis ij, axis image
-%                 figure(988)
-%                 cla
-%                 [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
-%                 ind = sub2ind(imsize, xx,yy);
-%                 quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
-                
-%                 %}
-                
+% %                     dStep = cumsum(hypot(diff(x_s),diff(y_s)));
+% %                     newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
+%                     x_s = interp1(dStep,x_s,newStep);
+%                     y_s = interp1(dStep,y_s,newStep);
+%                     
+% %                     set(hSpline, 'XData', y_s, 'YData', x_s, 'Marker', 'o');
+% %                     drawnow
+%                 end
+%                 
+% % %                 figure, hq = quiver(fx,fy); axis ij, axis image
+% %                 figure(988)
+% %                 cla
+% %                 [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
+% %                 ind = sub2ind(imsize, xx,yy);
+% %                 quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
+%                 
+% %                 %}
+%                 
                 %% Update the results display
+                figure(999)
+                ax = gca(figure(999));
+                cla(ax);
+                imshow(rgb); hold on
+                self.aVars.VPTracker.PlotResults(ax,2);
+                
                 % Copy the current image to the results window
                 figure(self.hResultsWindow);
                 ax = gca(self.hResultsWindow);
@@ -558,7 +572,6 @@ classdef Simulator < handle
 %                 imagesc(labels, 'Parent', ax); hold on,
 %                 imagesc(ipmIm, 'Parent', ax); colormap gray, hold on, 
 %                 imagesc(self.aVars.IPM.xRange, fliplr(self.aVars.IPM.yRange), ipmIm, 'Parent', ax); colormap gray, hold on, 
-               
                 
                 imshowpair(ismember(newLabels, find(obstacles)), ipmIm, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
 % %                 RA = imref2d(size(ipmIm),self.aVars.IPM.yRange, self.aVars.IPM.xRange);
@@ -589,13 +602,15 @@ classdef Simulator < handle
 
 %                 % Draw the path to the vanishing point
 %                 plot(ax, [0 ipmVP(2)], [0 ipmVP(1)], 'g', 'linewidth', 2)
+                plot(ax, [imsize(2)/2 vpx], [0 vpy], 'g--', 'linewidth', 2)
+                plot(imsize(2)/2, 0, 'x', vpx, vpy, 'o')
                 
-                % Draw the path planning results
-%                 plot(ax, y_s*sy, x_s*sx+self.aVars.IPM.xRange(1),'Color', [0 .5 0], 'linewidth', 2); plot(20, 0, 'x', vpy*sy, vpx*sx+self.aVars.IPM.xRange(1), 'o')
-%                 plot(ax, x_s*sx+self.aVars.IPM.xRange(1), y_s*sy,'Color', [0 .5 0], 'linewidth', 2); plot(0, 20, 'x', vpx*sx+self.aVars.IPM.xRange(1), vpy*sy, 'o')
-                plot(ax, y_s, x_s, 'Color', [0 .5 0], 'linewidth', 2); plot(imsize(2)/2, 0, 'x', vpy, vpx, 'o')
-
-               
+%                 % Draw the path planning results
+% %                 plot(ax, y_s*sy, x_s*sx+self.aVars.IPM.xRange(1),'Color', [0 .5 0], 'linewidth', 2); plot(20, 0, 'x', vpy*sy, vpx*sx+self.aVars.IPM.xRange(1), 'o')
+% %                 plot(ax, x_s*sx+self.aVars.IPM.xRange(1), y_s*sy,'Color', [0 .5 0], 'linewidth', 2); plot(0, 20, 'x', vpx*sx+self.aVars.IPM.xRange(1), vpy*sy, 'o')
+%                 plot(ax, y_s, x_s, 'Color', [0 .5 0], 'linewidth', 2); plot(imsize(2)/2, 0, 'x', vpy, vpx, 'o')
+% 
+%                
 %                 keyboard
                 %% Store the results window in a video
                 if self.MakeVideo
