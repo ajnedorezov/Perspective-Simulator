@@ -214,7 +214,7 @@ while hasFrame(vid)
 %         obstacles(n) = ~ismember(n, roadLabels) && stats(n).BoundingBox(4) > 100 && stats(n).BoundingBox(4) > stats(n).BoundingBox(3) && stats(n).BoundingBox(3) > 30;
         obstacles(n) = stats(n).BoundingBox(4) > 100 && stats(n).BoundingBox(4) > stats(n).BoundingBox(3) && stats(n).BoundingBox(3) > 30;
     end
-    obstacles = true(length(stats),1);
+%     obstacles = true(length(stats),1);
     
     % Plot the obstacles around the IPM image
 %     ipmSize = size(newLabels);
