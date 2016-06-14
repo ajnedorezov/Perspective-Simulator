@@ -1,6 +1,6 @@
 %% Read in the image
 I = double(imread('sampleObstacleIPM.png'));
-vpx = 430;
+vpx = 460;
 vpy = 1401;
 cx = 400;
 cy = 1;
@@ -29,9 +29,10 @@ tic, [px,py] = GVF(f, 0.2, 40); toc
 % px = px + edgeX/2;
 % py = py + edgeY/2;
 % 
-magGVF = hypot(px,py) + 1e-10;
-px = px./magGVF;
-py = py./magGVF;
+% % Make the magnitude of all vectors equal
+% magGVF = hypot(px,py) + 1e-10;
+% px = px./magGVF;
+% py = py./magGVF;
 
 imsize = size(px);
 [xx,yy] = meshgrid(1:10:imsize(1), 1:10:imsize(2));
@@ -40,17 +41,19 @@ subplot(122), quiver(yy,xx,px(ind),py(ind)); set(gca, 'ydir', 'normal','xdir','r
 
 %% Initialize the snake
 t = linspace(0,1, 50)';
-t = [t; flipud(t)];
+% t = [t; flipud(t)];
 x = cx + t.*(vpx-cx); % vpx.*t + (1-t).*cx;
 y = cy + t.*(vpy-cy);
 
 cla(subplot(121)), imagesc(GI), set(gca, 'ydir', 'normal','xdir','reverse'), hold on
 
 subplot(121), hold on,
-snakedisp(x,y,'r');
+% snakedisp(x,y,'r');
+plot(x(:), y(:), 'r');
 
 [x,y] = snakedeform(x,y,0.05,5,1,50,px,py,5*5);
 % [x,y] = snakedeform(x,y,0.075,43,1,90,px,py,5*50);
-snakedisp(x,y,'m');
+% snakedisp(x,y,'m');
+plot(x(:), y(:), 'm');
 
 
