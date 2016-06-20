@@ -171,8 +171,8 @@ classdef Simulator < handle
         function CreateMovingObjects(self)
             %% Draw some "Cars"
             [x,y,z] = self.Car(self.CarParams);
-            carlane = randi(self.RoadParams.numLanes,1,self.SimulationParams.numCars)-1;
-%             carlane = [2 0 1 1];
+%             carlane = randi(self.RoadParams.numLanes,1,self.SimulationParams.numCars)-1;
+            carlane = [2 0 1 1];
             for n = 1:self.SimulationParams.numCars
                 self.MovingObjects.Cars(n) = surface(x + 10 + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
             end
@@ -230,29 +230,36 @@ classdef Simulator < handle
             imsize = [1201 545];
 %             x_s = linspace(imsize(1)/2,imsize(1)/2,10);
 %             y_s = linspace(80,imsize(2),10);
-            x_s = linspace(0,imsize(1),10);
-            y_s = linspace(imsize(2)/2,imsize(2)/2,10);
+            snakeX = linspace(0,imsize(1),10);
+            snakeY = linspace(imsize(2)/2,imsize(2)/2,10);
 
             % Upsample & create a spline
-            steps = 0:(length(x_s)-1);
-            newSteps = 0:0.05:(length(x_s)-1);
-            pp = spline(steps,[x_s' y_s']', newSteps);
-            x_s = pp(1,:)';
-            y_s = pp(2,:)';
+            steps = 0:(length(snakeX)-1);
+            newSteps = 0:0.05:(length(snakeX)-1);
+            pp = spline(steps,[snakeX' snakeY']', newSteps);
+            snakeX = pp(1,:)';
+            snakeY = pp(2,:)';
             
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
             tic
+            posvec = [-29*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
             for t = 0:delT:40% 34.25;%
                 if ~ishandle(self.HD.MainView)
                     break
                 end
                 %% Update the vehicle/dynamics/scene simulation
                 figure(self.hFigure);
-                posvec = [t self.RoadParams.laneWidth*cos(t/25) + 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
-                targvec = posvec + self.DriverParams.lookAheadDistance*[1 -self.RoadParams.laneWidth/25*sin(t/25) 0];
+                posvec = posvec + [29*delT 0 0]; % Travel @ 65 mph
+                targvec = posvec + self.DriverParams.lookAheadDistance*[1 0 0];
                 campos(posvec);
                 camtarget(targvec);
+                
+                % Move the cars
+                for m = 1:self.SimulationParams.numCars
+                    x = get(self.MovingObjects.Cars(m), 'XData');
+                    set(self.MovingObjects.Cars(m), 'XData', x + 26*delT)
+                end
 
                 %% Grab the image
                 rgb = getframe(self.HD.MainView);
@@ -263,66 +270,6 @@ classdef Simulator < handle
                 self.aVars.VPTracker.Update(rgb, control);
                 
                 %% Do color thresholding to locate and classify the road/obstacles
-                %{
-%                 % Turn off the lights to get the correct coloring
-%                 set(self.Lighting, 'Visible', 'off');
-%                 gtRGB = getframe(self.HD.MainView);
-%                 gtRGB = gtRGB.cdata;
-%                 
-%                 % Compare the image to the color labels
-%                 objectRGBIDs = [0 128 0;                    % Ground/Grass
-%                                 0 128 191;                  % Sky
-%                                 26 26 26;                   % Road
-%                                 255 255 255;                % White lane markers
-%                                 198 198 0;                  % Yellow lane markers
-%                                 128 0 0;                    % Car/obstacles
-%                                 [92 64 51];                 % Tree trunk
-%                                 [25 50 25];                 % Tree top
-%                                 ];
-%                             
-%                 labels = zeros(fliplr(self.aVars.imsize));
-%                 for n = 1:size(objectRGBIDs,1)
-%                     dC = bsxfun(@minus, double(gtRGB), reshape(objectRGBIDs(n,:), 1, 1, 3));
-%                     dist = sqrt(sum(dC.*dC, 3));
-%                     labels(dist < 10) = n;
-%                 end
-%
-%                 % Turn the lights back on
-%                 set(self.Lighting, 'Visible', 'on');
-
-                % Change all the colors to black and look for things not
-                % black
-                 partOrder = ...
-                    {'self.SceneObjects.Ground'
-                     'self.SceneObjects.Background'
-                     'self.SceneObjects.Road'
-                     'self.SceneObjects.OpposingRoad'
-                     '[self.SceneObjects.LaneMarkings(:)]'
-                     'self.MovingObjects.Cars'
-                     '[self.StaticObjects.Trees(:).top]'
-                     '[self.StaticObjects.Trees(:).trunk]'
-                     };
-
-                for n = 1:length(partOrder)
-                    eval(sprintf('self.MakeBlack(%s);', partOrder{n}));
-                end
-                
-                % Turn back on features to get the label mapping
-                labels = zeros(fliplr(self.aVars.imsize));
-               
-                try
-                    for n = 1:length(partOrder)
-                        eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
-                        gtRGB = getframe(self.HD.MainView);
-                        labels(rgb2gray(gtRGB.cdata)>3) = n;
-                        eval(sprintf('self.MakeBlack(%s);', partOrder{n}));  
-                    end
-                    for n = 1:length(partOrder)
-                        eval(sprintf('self.RestoreColor(%s);', partOrder{n}));
-                    end
-                end
-                %}
-                
                 binaryIm = zeros(size(rgb,1), size(rgb,2), 3);
                 for n = 1:3
                     channel = rgb(:,:,n);
@@ -332,69 +279,19 @@ classdef Simulator < handle
                 end
                 ind = sum(binaryIm,3)==0;
                 
-                
                 %% Perform the IPM
-%                 ipmIm = self.aVars.IPM.performTransformation(double(rgb2gray(rgb))/255);
-%                 ipmIm = rot90(ipmIm);
+                % Transform the image
                 for n = 1:3
                     channel = binaryIm(:,:,n);
                     channel(ind) = 0;
                     ipmIm(:,:,n) = self.aVars.IPM.performTransformation(double(channel));
+                    
+                    channel = rgb(:,:,n);
+                    rgbIPM(:,:,n) = self.aVars.IPM.performTransformation(double(channel));
                 end
-%                 ipmIm = rot90(ipmIm,2);
-                ipmIm = rgb2gray(ipmIm);
                 
-%                 ipmVP = self.aVars.IPM.transformSinglePoint([self.aVars.VPTracker.prior.mean(2) self.aVars.IPM.rHorizon]);
+                % Transform the vanishing point
                 ipmVP = self.aVars.IPM.transformSinglePoint(max(self.aVars.VPTracker.prior.mean(2), self.aVars.IPM.rHorizon), self.aVars.VPTracker.prior.mean(1));
-%                 ipmVP = self.aVars.IPM.transformSinglePoint(self.aVars.VPTracker.prior.mean(1), max(self.aVars.VPTracker.prior.mean(2), self.aVars.IPM.rHorizon));
-                
-                % Figure out the color of the roadway
-                roadPixel = ipmIm(round(size(ipmIm,1)/2) + (-5:5), 80+(0:5));
-                roadPixelRange = median(roadPixel(:)) + 0.05*[-1 1];
-                
-                %% Detect obstacles by checking if its a horizontal streak
-                % Perform K-means to segment the image into different
-                % regions
-                numCusters = 6;
-                
-                ipmIm(isnan(ipmIm)) = -1;
-                [IDX, centers] = kmeans(ipmIm(:), numCusters);
-                IDX = reshape(IDX, size(ipmIm));
-                IDX(IDX == IDX(1,1)) = -1;
-                
-                % Break each cluster into individual unique clusters,
-                % concurrently, decide if the cluster is roadway
-                newLabels = zeros(size(IDX));
-                offset = 0;
-                roadLabels = [];
-                for n = 1:length(centers)
-                    ind = IDX == n;
-                    tempLabels = bwlabeln(ind) + offset;
-                    newLabels(ind) = tempLabels(ind & newLabels==0);
-                    offset = max(newLabels(:));
-                    % NOTE this conditional logic needs to change so it'll be more adaptive
-                    % to roadway light fluctuations (i.e. use the color of the road right
-                    % in front of the camera, this means we need to maintain some distance
-                    % between vehicles)
-                %     if centers(n) > .33 && centers(n) < .4
-                    if centers(n) > roadPixelRange(1) && centers(n) < roadPixelRange(2)
-                        % These belong to the road
-                        roadLabels = [roadLabels; unique(tempLabels)];
-                    end
-                end
-
-                % Get the region properties for the segments
-                stats = regionprops(newLabels, 'BoundingBox', 'Extent', 'Orientation');
-
-                % Decide if the cluster is streak like and something that
-                % should be avoided
-                obstacles = false(length(stats),1);
-                for n = 1:length(stats)
-                    obstacles(n) = ~ismember(n, roadLabels) && stats(n).BoundingBox(4) > 100 && stats(n).BoundingBox(4) > stats(n).BoundingBox(3) && stats(n).BoundingBox(3) > 30;
-                end
-                
-                %% Do the maze path following algorithm stuff
-%                 ipmVP = [15 300];
                 
                 % Get the current vanishing point estimate
                 origvpx = (ipmVP(1)-self.aVars.IPM.xRange(1))*size(ipmIm,2)/diff(self.aVars.IPM.xRange);
@@ -404,214 +301,142 @@ classdef Simulator < handle
                 m = (origvpx-size(ipmIm,2)/2)/origvpy;
                 vpy = size(ipmIm,1);
                 vpx = vpy*m + size(ipmIm,2)/2;
-%                 vpx = origvpx;
-%                 vpy = origvpy;
+
                 
-                1;
-%                 % Create an edge map for the path planning
-%                 %Im = ismember(newLabels, find(obstacles));
-%                 Im = ipmIm > 0;%rgb2gray(ipmIm) > 0;s
-%                 imsize = size(Im);
-%                 
-%                 smArea = 50;
-%                 se = strel('ball', smArea, smArea);
-%                 smoothedIm = smArea-imdilate(1-Im, se);
-%                                 
-%                 % Create a curve towards the vanishing point
-%                 [xx,yy] = meshgrid(1:imsize(2), 1:imsize(1));
-%                 dx = vpy - xx;
-%                 dy = vpx - yy;
-%                 newMag =  sqrt(dx.*dx + dy.*dy);
-%                 newMag = 1 - newMag / max(newMag(:));
-% %                 newMag = newMag / max(newMag(:));
-% 
-% %                 % Figure out what direction the edges are going
-% %                 LeftRight = [zeros(size(smoothedIm,1),1) diff(smoothedIm, [], 2)];
-% %                 UpDown = [zeros(1,size(smoothedIm,2)); diff(smoothedIm, [], 1)];
-% % %                 h = fspecial('gaussian', [5 5]);
-% % %                 LeftRight = imfilter(LeftRight, h);
-% % %                 UpDown = imfilter(UpDown, h);
-%                 
-%                 % Create the GVF
-%                 mu = 0.2;
-%                 smoothedIm = padarray(smoothedIm, [1 1], 'symmetric', 'both');
-%                 [fx,fy] = gradient(-smoothedIm);
-%                 
-%                 u = fx;
-%                 v = fy;
-%                 newMag = padarray(newMag, [1 1], 'symmetric', 'both');
-%                 [fx2, fy2] = gradient(newMag);
-%                 fx2 = fx2(2:end-1,2:end-1);
-%                 fy2 = fy2(2:end-1,2:end-1);
-%                 
-%                 gradMag = u.*u + v.*v;
-%                 
-%                 for n = 1:80
-%                     u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
-%                     v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
-%                     u = u + mu*4*del2(u) - gradMag.*(u-fx);
-%                     v = v + mu*4*del2(v) - gradMag.*(v-fy);
-%                 end
-%                 u = u(2:end-1,2:end-1);
-%                 v = v(2:end-1,2:end-1);
-% 
-%                 maxEdge = max(max(hypot(u,v))); %0.25
-%                 edgeX = maxEdge*fx2./(hypot(fx2,fy2) + eps);
-%                 edgeY = maxEdge*fy2./(hypot(fx2,fy2) + eps);
-%                 
-% %                 clockwise = true;
-% % %                 clockwise = false;
-% %                 if clockwise 
-% %                     v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
-% %                     v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
-% %                     v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge/2;
-% %                     v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge/2;
-% %                 else
-% %                     v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
-% %                     v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
-% %                     v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
-% %                     v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
-% %                 end   
-% 
-% %                 se = strel('ball', 13, 13);
-% %                 ind = imdilate(double(Im > 0.5), se);
-% %                 ind = ~logical(ind-min(ind(:)));
-% % 
-% %                 u(ind) = edgeX(ind);
-% %                 v(ind) = edgeY(ind);
-% % %                 u(Im < 0.5) = edgeX(Im < 0.5);
-% % %                 v(Im < 0.5) = edgeY(Im < 0.5);
-% 
-% %                 ind = hypot(u,v) < 1e-4;
-% %                 u(ind) = edgeX(ind);
-% %                 v(ind) = edgeY(ind);
-%                 
-%                 u = u + edgeX/2;
-%                 v = v + edgeY/2;
-% 
-% %                 ind = hypot(u,v) < 1e-2;
-% %                 u(ind) = u(ind) + edgeX(ind)/10;
-% %                 v(ind) = v(ind) + edgeY(ind)/10;
-% 
-%                 magGVF = hypot(u,v) + 1e-10;
-%                 fx = u./magGVF;
-%                 fy = v./magGVF;
-% 
-% %                 fx = u;
-% %                 fy = v;
-%                                 
-%                 % Create the components of the Euler equation
-%                 % [Tension, rigidity, stepsize, energy portion]
-%                 alpha = 0.7;% 0.1;% 0.4;%0.5; 
-%                 beta = 0.5;%0.0;%0.5;
-%                 gamma = 1;
-%                 kappa = 1;
-%                 A = imfilter(eye(length(newSteps)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
-% 
-%                 % Compute the inverse of A by LU decompositions since it is a
-%                 % pentadiagonal banded matrix
-%                 [L,U] = lu(A + gamma*eye(size(A)));
-%                 invA = inv(U) * inv(L);
-% 
-%                 % Iteratively solve the Euler equations for x & y
-% %                 tempFig = figure(999);
-% %                 tempax = gca(tempFig);
-% %                 cla(tempax);
-% %                 imagesc(smoothedIm), colormap gray, hold on,
-% %                 hSpline = plot(tempax, y_s, x_s, 'b-o');
-%                 
-%                 for n = 1:100%400
-%                     newx = gamma*x_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
-%                     newy = gamma*y_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
-% 
-%                     x_s = invA*newx;
-%                     y_s = invA*newy;
-% 
-%                     % Redistribute the points along the curve
-% %                     ind = find(diff(x_s)<0);
-% %                     x_s(ind(ind<length(x_s)/2)) = 0;
-% %                     y_s(ind(ind<length(x_s)/2)) = imsize(2)/2;
-% %                     x_s(ind(ind>=length(x_s)/2)) = vpx;
-% %                     y_s(ind(ind>=length(x_s)/2)) = vpy;
-%                     
-%                     x_s([1 end]) = [0 vpx];
-%                     y_s([1 end]) = [imsize(2)/2 vpy];
-%                     dStep = cumsum(hypot([0; diff(x_s)],[0; diff(y_s)]));
-%                     newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
-% %                     dStep = cumsum(hypot(diff(x_s),diff(y_s)));
-% %                     newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
-%                     x_s = interp1(dStep,x_s,newStep);
-%                     y_s = interp1(dStep,y_s,newStep);
-%                     
-% %                     set(hSpline, 'XData', y_s, 'YData', x_s, 'Marker', 'o');
-% %                     drawnow
-%                 end
-%                 
-% % %                 figure, hq = quiver(fx,fy); axis ij, axis image
-% %                 figure(988)
-% %                 cla
-% %                 [xx,yy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
-% %                 ind = sub2ind(imsize, xx,yy);
-% %                 quiver(yy,xx,fx(ind),fy(ind)); axis ij, axis image
-%                 
-% %                 %}
-%                 
+                %% Detect obstacles by checking if its a vertical streak
+%                 useKmeans = true;
+                useKmeans = false;
+
+                if useKmeans
+                    numCusters = 3;
+                    grayIm = rgb2gray(ipmIm);
+            %         grayIm = double(rgb2gray(uint8(rgbIPM)));
+
+                    grayIm(isnan(grayIm)) = -1;
+                    [IDX, centers] = kmeans(grayIm(:), numCusters);
+                    IDX = reshape(IDX, size(grayIm));
+                    IDX(IDX == IDX(1,1)) = -1;     % Grab the first pixel since this is always black because the IPM creates a cone and this pixel is outside of the interpolated data
+
+                    % Figure out the color of the roadway
+            %         roadPixel = grayIm(round(size(grayIm,2)/2) + (-5:5), 80+(0:5));
+                    roadPixel = grayIm(ptInFrontOfCar(1) + (-20:20), ptInFrontOfCar(2)+(-10:30)); %ptInFrontOfCar = [400 330];
+                    roadPixelRange = median(roadPixel(:)) + 50*[-1 1];%0.05*[-1 1];
+
+                    % Break each cluster into individual unique clusters,
+                    % concurrently, decide if the cluster is roadway
+                    newLabels = zeros(size(IDX));
+                    offset = 0;
+                    roadLabels = [];
+                    for n = 1:length(centers)
+                        ind = IDX == n;
+                        tempLabels = bwlabeln(ind) + offset;
+                        newLabels(ind) = tempLabels(ind & newLabels==0);
+                        offset = max(newLabels(:));
+                        % NOTE this conditional logic needs to change so it'll be more adaptive
+                        % to roadway light fluctuations (i.e. use the color of the road right
+                        % in front of the camera, this means we need to maintain some distance
+                        % between vehicles)
+                    %     if centers(n) > .33 && centers(n) < .4
+                        if centers(n) > roadPixelRange(1) && centers(n) < roadPixelRange(2)
+                            % These belong to the road
+                            roadLabels = [roadLabels; unique(tempLabels)];
+                        end
+                    end
+                else
+                    grayIm = sum(ipmIm,3) > 0;
+                    newLabels = bwlabeln(grayIm);
+                end
+
+                % Get the region properties for the segments
+                stats = regionprops(newLabels, 'BoundingBox', 'Extent', 'Orientation');
+
+                % Decide if the cluster is streak like and something that
+                % should be avoided
+                obstacles = false(length(stats),1);
+                for n = 1:length(stats)
+                    obstacles(n) = stats(n).BoundingBox(4) > 100 && stats(n).BoundingBox(4) > stats(n).BoundingBox(3) && stats(n).BoundingBox(3) > 30;
+                end
+                isObstacle(:,:,1) = ismember(newLabels, find(obstacles));
+                
+                %% Do the maze path following algorithm stuff
+
+                % Smooth the image and convert to an edge map
+                smArea = 50;
+                se = strel('ball', smArea, smArea);
+                GI = imdilate(double(isObstacle), se)-smArea;
+                f = smArea-GI;
+                
+                % Compute the GVF of the edge map f
+                [px,py] = GVF(f, 0.2, 40);
+                
+                % Make the magnitude of all vectors equal
+                magGVF = hypot(px,py) + 1e-10;
+                px = px./magGVF;
+                py = py./magGVF;
+
+                % Make the obstacle have vectors towards the vanishing point
+                imsize = size(px);
+
+                [cc,rr] = meshgrid(1:imsize(2), 1:imsize(1));
+                dy = vpy - rr;
+                dx = vpx - cc;
+                newMag =  sqrt(dx.*dx + dy.*dy) + eps;
+
+                px(isObstacle)  = 0.5*dx(isObstacle)./newMag(isObstacle);
+                py(isObstacle)  = 0.5*dy(isObstacle)./newMag(isObstacle);
+
+%                 % Plot the gradient vectors
+%                 [qx,qy] = meshgrid(1:10:imsize(1), 1:10:imsize(2));
+%                 ind = sub2ind(imsize, qx,qy);
+%                 subplot(122), quiver(qy,qx,px(ind),py(ind)); set(gca, 'ydir', 'normal','xdir','reverse')
+
+%%
+                % Initialize the snake
+                snakeTime = linspace(0,1, 100)';
+                cx = floor(imsize(2)/2);
+                cy = 1;
+                x = cx + snakeTime.*(vpx-cx); % vpx.*t + (1-t).*cx;
+                y = cy + snakeTime.*(vpy-cy);
+
+                [snakeX, snakeY] = snakedeform(x,y,1,0.75,0.5,25,px,py,5*5);
+%                 [snakeX, snakeY] = snakedeform(x,y,1,1,0.5,25,px,py,5*5);
+%                 % [snakeX, snakeY] = snakedeform(x,y,0.5,0.5,0.5,50,px,py,5*5);
+
                 %% Update the results display
                 figure(999)
                 ax = gca(figure(999));
                 cla(ax);
                 imshow(rgb); hold on
-                self.aVars.VPTracker.PlotResults(ax,2);
                 
                 % Copy the current image to the results window
                 figure(self.hResultsWindow);
                 ax = gca(self.hResultsWindow);
                 cla(ax)
-               
-%                 imshow(rgb, 'Parent', ax); hold on,
-%                 imagesc(labels, 'Parent', ax); hold on,
-%                 imagesc(ipmIm, 'Parent', ax); colormap gray, hold on, 
-%                 imagesc(self.aVars.IPM.xRange, fliplr(self.aVars.IPM.yRange), ipmIm, 'Parent', ax); colormap gray, hold on, 
                 
-                imshowpair(ismember(newLabels, find(obstacles)), ipmIm, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
-% %                 RA = imref2d(size(ipmIm),self.aVars.IPM.yRange, self.aVars.IPM.xRange);
-%                 RA = imref2d(size(ipmIm),self.aVars.IPM.xRange, self.aVars.IPM.yRange);
-%                 imshowpair(ismember(newLabels, find(obstacles)), RA, ipmIm, RA, 'falsecolor','ColorChannels', 'red-cyan', 'Parent', ax); hold on, 
-% %                 set(ax,'YTickLabel', flipud(get(ax,'YTickLabel')))
-% %                 imagesc(smoothedIm, 'Parent', ax); colormap gray, hold on, 
+                tIm = imoverlay(uint8(rgbIPM), uint8(isObstacle), [1 0 0]);
+                imshow(tIm, 'Parent', ax), hold on
                 title(sprintf('Time %0.2f', t))
                 axis equal tight
                 set(ax,'yDir','normal','xdir','reverse')
                 
                 
-%                 % Draw the VP Results
-%                 self.aVars.VPTracker.PlotResults(ax, 0);
+                % Draw the VP Results
+                self.aVars.VPTracker.PlotResults(ax, 0);
+%                 self.aVars.VPTracker.PlotResults(ax, 2);
 
                 % Draw bounding boxes around the obstacles
-                sx = diff(self.aVars.IPM.xRange)/size(ipmIm,1);
-                sy = diff(self.aVars.IPM.yRange)/size(ipmIm,2);
                 for n = find(obstacles)'
-%                     x = (stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0])*sy;
-%                     y = (stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0])*sx + self.aVars.IPM.xRange(1);
-% %                     newPts = self.aVars.IPM.transformSinglePoint(y, x);
-% %                     plot(ax, x, y, 'y', 'linewidth', 1.5);
-%                     plot(ax, y, x, 'y', 'linewidth', 1.5);
-%                     plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
                     plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
                 end
 
-%                 % Draw the path to the vanishing point
-%                 plot(ax, [0 ipmVP(2)], [0 ipmVP(1)], 'g', 'linewidth', 2)
-                plot(ax, [imsize(2)/2 vpx], [0 vpy], 'g--', 'linewidth', 2)
-                plot(imsize(2)/2, 0, 'x', vpx, vpy, 'o')
+                % Draw the path to the vanishing point
+%                 plot(ax, [imsize(2)/2 vpx], [0 vpy], 'g--', 'linewidth', 2)
+%                 plot(imsize(2)/2, 0, 'x', vpx, vpy, 'o')
                 
-%                 % Draw the path planning results
-% %                 plot(ax, y_s*sy, x_s*sx+self.aVars.IPM.xRange(1),'Color', [0 .5 0], 'linewidth', 2); plot(20, 0, 'x', vpy*sy, vpx*sx+self.aVars.IPM.xRange(1), 'o')
-% %                 plot(ax, x_s*sx+self.aVars.IPM.xRange(1), y_s*sy,'Color', [0 .5 0], 'linewidth', 2); plot(0, 20, 'x', vpx*sx+self.aVars.IPM.xRange(1), vpy*sy, 'o')
-%                 plot(ax, y_s, x_s, 'Color', [0 .5 0], 'linewidth', 2); plot(imsize(2)/2, 0, 'x', vpy, vpx, 'o')
-% 
-%                
-%                 keyboard
+                % Draw the path planning results
+                h = plot(ax, snakeX, snakeY, 'Color', [0.5 1 0], 'linewidth', 2); plot(imsize(2)/2, 0, 'x', vpx, vpy, 'o')
+                
+                keyboard
                 %% Store the results window in a video
                 if self.MakeVideo
                     im = getframe(ax);
