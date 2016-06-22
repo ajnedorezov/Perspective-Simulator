@@ -39,7 +39,7 @@ tic, [px,py] = GVF(f, 0.2, 40); toc
 % py = py + edgeY/2;
 
 % Make the magnitude of all vectors equal
-magGVF = 2*hypot(px,py) + 1e-10;
+magGVF = hypot(px,py) + 1e-10;
 px = px./magGVF;
 py = py./magGVF;
 
@@ -51,12 +51,12 @@ dx = vpx - cc;
 newMag =  sqrt(dx.*dx + dy.*dy) + eps;
 
 ind = logical(I);
-px(ind) = 0.25*dx(ind)./newMag(ind);
-py(ind) = 0.25*dy(ind)./newMag(ind);
+px(ind) = 0.75*px(ind)+0.25*dx(ind)./newMag(ind);
+py(ind) = 0.75*py(ind)+0.25*dy(ind)./newMag(ind);
 
 [qx,qy] = meshgrid(1:10:imsize(1), 1:10:imsize(2));
 ind = sub2ind(imsize, qx,qy);
-subplot(122), quiver(qy,qx,px(ind),py(ind)); set(gca, 'ydir', 'normal','xdir','reverse')
+ax(1) = subplot(122); quiver(qy,qx,px(ind),py(ind)); set(gca, 'ydir', 'normal','xdir','reverse')
 
 %% Initialize the snake
 t = linspace(0,1, 100)';
@@ -66,13 +66,13 @@ y = cy + t.*(vpy-cy);
 
 cla(subplot(121)), imagesc(f), set(gca, 'ydir', 'normal','xdir','reverse'), hold on
 
-subplot(121), hold on,
+ax(2) = subplot(121); hold on,
 % snakedisp(x,y,'r');
 % plot(x(:), y(:), 'r', 'linewidth', 3);
 
 
-% [x,y] = snakedeform(x,y,0.32,0.25,0.0375,25,px,py,5*5);   % sample image 2
-[x,y] = snakedeform(x,y,0.32,0.25,0.375,25,px,py,5*20);   % sample image 2
+% [x,y] = snakedeform(x,y,0.125,1,0.25,25,px,py,5*20);   % sample image 2
+[x, y] = snakedeform(x,y,1,0.75,0.5,25,px,py,5*5);
 
 % [x,y] = snakedeform(x,y,1,0.75,0.5,25,px,py,5*5); % sample image 1
 
@@ -84,4 +84,4 @@ subplot(121), hold on,
 plot(x(:), y(:), 'Color', [1 0 0], 'linewidth', 4);
 plot([cx vpx], [cy vpy], 'rx', 'MarkerSize', 10);
 
-
+linkaxes(ax)

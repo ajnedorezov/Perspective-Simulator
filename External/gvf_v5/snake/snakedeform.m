@@ -55,7 +55,7 @@ A(end,:) = 0; A(end-1,:) = 0; A(end-1,(end-2):(end-0)) = [1 -2 1];
 [L,U] = lu(A + gamma * diag(ones(1,N)));
 invAI = inv(U) * inv(L);
 
-h = plot(x,y,'k:', 'linewidth', 2);
+% h = plot(x,y,'k:', 'linewidth', 2);
 for count = 1:ITER,
    vfx = interp2(fx,x,y,'*linear',0);
    vfy = interp2(fy,x,y,'*linear',0);
@@ -63,7 +63,7 @@ for count = 1:ITER,
    % deform snake
    x = invAI * (gamma* x + kappa*vfx);
    y = invAI * (gamma* y + kappa*vfy);
-   set(h, 'XData', x(:), 'YData', y(:));
-   1;%
+%    set(h, 'XData', x(:), 'YData', y(:));
+%    1;%
 end
-delete(h)
+% delete(h)

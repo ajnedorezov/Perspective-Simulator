@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-%         MakeVideo = true;
-        MakeVideo = false;
+        MakeVideo = true;
+%         MakeVideo = false;
         
         Lighting
     end
@@ -220,7 +220,7 @@ classdef Simulator < handle
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('IPM_PathPlanning_PathMemory_RoadRemoval.avi');
+                mov = VideoWriter('IPM_RevisedSnakeAlgorithm.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -244,7 +244,7 @@ classdef Simulator < handle
             % travel 1 mile
             tic
             posvec = [-29*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
-            for t = 0:delT:40% 34.25;%
+            for t = 0:delT:5%40% 34.25;%
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -257,8 +257,8 @@ classdef Simulator < handle
                 
                 % Move the cars
                 for m = 1:self.SimulationParams.numCars
-                    x = get(self.MovingObjects.Cars(m), 'XData');
-                    set(self.MovingObjects.Cars(m), 'XData', x + 26*delT)
+                    xpos = get(self.MovingObjects.Cars(m), 'XData');
+                    set(self.MovingObjects.Cars(m), 'XData', xpos + 26*delT)
                 end
 
                 %% Grab the image
@@ -382,31 +382,41 @@ classdef Simulator < handle
                 dx = vpx - cc;
                 newMag =  sqrt(dx.*dx + dy.*dy) + eps;
 
-                px(isObstacle)  = 0.5*dx(isObstacle)./newMag(isObstacle);
-                py(isObstacle)  = 0.5*dy(isObstacle)./newMag(isObstacle);
+                px(isObstacle)  = 0.75*px(isObstacle) + 0.25*dx(isObstacle)./newMag(isObstacle);
+                py(isObstacle)  = 0.75*py(isObstacle) + 0.25*dy(isObstacle)./newMag(isObstacle);
 
 %                 % Plot the gradient vectors
 %                 [qx,qy] = meshgrid(1:10:imsize(1), 1:10:imsize(2));
 %                 ind = sub2ind(imsize, qx,qy);
 %                 subplot(122), quiver(qy,qx,px(ind),py(ind)); set(gca, 'ydir', 'normal','xdir','reverse')
 
-%%
                 % Initialize the snake
-                snakeTime = linspace(0,1, 100)';
-                cx = floor(imsize(2)/2);
-                cy = 1;
-                x = cx + snakeTime.*(vpx-cx); % vpx.*t + (1-t).*cx;
-                y = cy + snakeTime.*(vpy-cy);
-
-                [snakeX, snakeY] = snakedeform(x,y,1,0.75,0.5,25,px,py,5*5);
-%                 [snakeX, snakeY] = snakedeform(x,y,1,1,0.5,25,px,py,5*5);
-%                 % [snakeX, snakeY] = snakedeform(x,y,0.5,0.5,0.5,50,px,py,5*5);
+                if t == 0 
+                    snakeTime = linspace(0,1, 100)';
+                    cx = floor(imsize(2)/2);
+                    cy = 1;
+                    snakeX = cx + snakeTime.*(vpx-cx); % vpx.*t + (1-t).*cx;
+                    snakeY = cy + snakeTime.*(vpy-cy);
+                else
+                    snakeX(end) = vpx;
+                    snakeY(end) = vpy;
+                end
+% 
+%                 [snakeX, snakeY] = snakedeform(x,y,1,0.75,0.5,25,px,py,5*5);
+%                 [snakeX,snakeY] = snakedeform(x,y,1,0.75,0.25,25,px,py,5*20);
+                [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.75,0.25,20,px,py,25);
 
                 %% Update the results display
-                figure(999)
-                ax = gca(figure(999));
-                cla(ax);
-                imshow(rgb); hold on
+                
+%                 % Draw the scene
+%                 figure(999)
+%                 ax = gca(figure(999));
+%                 cla(ax);
+%                 imshow(rgb); hold on
+                
+                % Draw the VP Results
+%                 self.aVars.VPTracker.PlotResults(ax, 0);
+%                 self.aVars.VPTracker.PlotResults(ax, 2);
                 
                 % Copy the current image to the results window
                 figure(self.hResultsWindow);
@@ -414,29 +424,25 @@ classdef Simulator < handle
                 cla(ax)
                 
                 tIm = imoverlay(uint8(rgbIPM), uint8(isObstacle), [1 0 0]);
-                imshow(tIm, 'Parent', ax), hold on
+                imshow(tIm, 'Parent', ax), hold(ax, 'on')
                 title(sprintf('Time %0.2f', t))
                 axis equal tight
                 set(ax,'yDir','normal','xdir','reverse')
                 
-                
-                % Draw the VP Results
-                self.aVars.VPTracker.PlotResults(ax, 0);
-%                 self.aVars.VPTracker.PlotResults(ax, 2);
-
                 % Draw bounding boxes around the obstacles
-                for n = find(obstacles)'
-                    plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
-                end
+%                 for n = find(obstacles)'
+%                     plot(ax, stats(n).BoundingBox(1) + [0 0 stats(n).BoundingBox([3 3]) 0], stats(n).BoundingBox(2) + [0 stats(n).BoundingBox([4 4]) 0 0], 'y', 'linewidth', 1.5);
+%                 end
 
                 % Draw the path to the vanishing point
 %                 plot(ax, [imsize(2)/2 vpx], [0 vpy], 'g--', 'linewidth', 2)
 %                 plot(imsize(2)/2, 0, 'x', vpx, vpy, 'o')
                 
                 % Draw the path planning results
-                h = plot(ax, snakeX, snakeY, 'Color', [0.5 1 0], 'linewidth', 2); plot(imsize(2)/2, 0, 'x', vpx, vpy, 'o')
+                plot(ax, snakeX, snakeY, 'Color', [0.5 1 0], 'linewidth', 2); 
+                plot(ax, imsize(2)/2, 0, 'x', vpx, vpy, 'o')
                 
-                keyboard
+%                 keyboard
                 %% Store the results window in a video
                 if self.MakeVideo
                     im = getframe(ax);
