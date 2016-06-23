@@ -220,7 +220,7 @@ classdef Simulator < handle
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('IPM_RevisedSnakeAlgorithm.avi');
+                mov = VideoWriter('RevisedSnakeAlgorithm_Retuned.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -244,14 +244,24 @@ classdef Simulator < handle
             % travel 1 mile
             tic
             posvec = [-29*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
-            for t = 0:delT:5%40% 34.25;%
+            commandedHeading = 0;
+            currentYaw = 0;
+            commandedSpeed = 29; % Travel @ 65 mph
+            currentSpeed = commandedSpeed;
+            for t = 0:delT:40% 34.25;%
                 if ~ishandle(self.HD.MainView)
                     break
                 end
                 %% Update the vehicle/dynamics/scene simulation
                 figure(self.hFigure);
-                posvec = posvec + [29*delT 0 0]; % Travel @ 65 mph
-                targvec = posvec + self.DriverParams.lookAheadDistance*[1 0 0];
+                headingError = (commandedHeading-currentYaw);
+                speedError = commandedSpeed - currentSpeed;
+                currentYaw = currentYaw + sign(headingError)*min(abs(headingError), 20*pi/180)*delT;
+                currentSpeed = currentSpeed + 0.5*speedError;
+                
+                posvec = posvec + currentSpeed*[cos(currentYaw) sin(currentYaw) 0]*delT; 
+                targvec = posvec + self.DriverParams.lookAheadDistance*[cos(currentYaw) sin(currentYaw) 0];
+                
                 campos(posvec);
                 camtarget(targvec);
                 
@@ -404,7 +414,19 @@ classdef Simulator < handle
 % 
 %                 [snakeX, snakeY] = snakedeform(x,y,1,0.75,0.5,25,px,py,5*5);
 %                 [snakeX,snakeY] = snakedeform(x,y,1,0.75,0.25,25,px,py,5*20);
-                [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.75,0.25,20,px,py,25);
+%                 [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.75,0.25,20,px,py,25); %*
+                [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.25,0.25,5,px,py,25);
+                
+                %% Convert the snake into a commanded heading
+                xcenter = size(ipmIm,2)/2;
+                sx = diff(self.aVars.IPM.xRange)/size(ipmIm,2);
+                sy = diff(self.aVars.IPM.yRange)/size(ipmIm,1);
+                
+                % Grab a point ~50ft in down the curve (i.e.
+                % 50ft/300ft*100pts --> 17th index)
+                ptX = (xcenter - snakeX(17))*sx;
+                ptY = snakeY(17)*sy;
+                commandedHeading = atan2(ptX,ptY);
 
                 %% Update the results display
                 
@@ -424,10 +446,12 @@ classdef Simulator < handle
                 cla(ax)
                 
                 tIm = imoverlay(uint8(rgbIPM), uint8(isObstacle), [1 0 0]);
-                imshow(tIm, 'Parent', ax), hold(ax, 'on')
+                imshow(rot90(tIm,2), 'Parent', ax, 'XData', (self.aVars.IPM.xRange), 'YData', fliplr(self.aVars.IPM.yRange)), hold(ax, 'on')
                 title(sprintf('Time %0.2f', t))
-                axis equal tight
-                set(ax,'yDir','normal','xdir','reverse')
+                axis equal tight on
+                set(ax,'yDir','normal')%,'xdir','reverse')
+                ylabel(ax, 'Down Range (ft)')
+                xlabel(ax, 'Cross Range (ft)')
                 
                 % Draw bounding boxes around the obstacles
 %                 for n = find(obstacles)'
@@ -439,8 +463,9 @@ classdef Simulator < handle
 %                 plot(imsize(2)/2, 0, 'x', vpx, vpy, 'o')
                 
                 % Draw the path planning results
-                plot(ax, snakeX, snakeY, 'Color', [0.5 1 0], 'linewidth', 2); 
-                plot(ax, imsize(2)/2, 0, 'x', vpx, vpy, 'o')
+                plot(ax, (xcenter-snakeX)*sx, snakeY*sy, 'Color', [0.5 1 0], 'linewidth', 2); 
+                plot(ax, 0, 0, 'x', (vpx-xcenter)*sx, vpy*sy, 'o')
+                quiver(0,0, ptX, ptY, 'c', 'Parent', ax, 'LineWidth', 3)
                 
 %                 keyboard
                 %% Store the results window in a video
@@ -589,6 +614,11 @@ classdef Simulator < handle
         function [minv, maxv] = minmax(x)
             minv = min(x(:));
             maxv = max(x(:));
+        end
+        
+        function y = wraprad(x)
+            % Helper function to wrap radians to be between -pi & pi 
+            y = x - sign(x).*fix((abs(x)+pi)/(2*pi))*2*pi;
         end
     end
 end
