@@ -101,7 +101,7 @@ classdef VPTracker < handle
             if detailLevel >= 1
                 plot(ax, self.prior.samples(:,1), self.prior.samples(:,2), 'y.')
             end
-            plot(ax, self.prior.mean(1), self.prior.mean(2), 'ys', 'linewidth', 2, 'Markersize', 10);
+            plot(ax, self.prior.mean(1), self.prior.mean(2), 's', 'linewidth', 2, 'Markersize', 5, 'Color', [1 0 0]);
                                
         end
         

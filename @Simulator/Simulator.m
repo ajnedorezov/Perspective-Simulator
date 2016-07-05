@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-        MakeVideo = true;
-%         MakeVideo = false;
+%         MakeVideo = true;
+        MakeVideo = false;
         
         Lighting
     end
@@ -243,7 +243,8 @@ classdef Simulator < handle
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
             tic
-            posvec = [-29*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
+%             posvec = [-29*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
+            posvec = [10 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
             commandedHeading = 0;
             currentYaw = 0;
             commandedSpeed = 29; % Travel @ 65 mph
