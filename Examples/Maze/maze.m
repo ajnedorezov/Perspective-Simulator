@@ -1,4 +1,4 @@
-function createmaze_new()
+function MZ = maze(row, col, pattern, seedNum)
 %maze(row,col,pattern)
 % usage  thyme = maze(30,45,'c');
 % row - number of rows in the maze
@@ -21,13 +21,11 @@ function createmaze_new()
 % direction. The absolute value of the pointer is the id of the
 % intersection in that direction.
 
-% rand('state',sum(100*clock))
-row = 5;
-col = 5;
-pattern = 'c';
+% Modified by Adam J. Nedorezov 
+% Disabled gameplay aspect, output maze result as binary image and accepts
+% random seed number to return the same maze
 
-% rand('state',1)
-rand('state',5)
+rand('state', seedNum)
 
 [cc,rr]=meshgrid(1:col,1:row);
 state = reshape([1:row*col],row,col); % state identifies connected regions
@@ -69,227 +67,61 @@ h=figure('KeyPressFcn',@move_spot,'color','white');
 show_maze(row, col, rr, cc, ptr_left, ptr_up, ptr_right, ptr_down,h);
 
 
+% % start play
+% cursor_pos=[1,1];
+% current_id=1;
+% figure(h)
+% text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color','r');
+% set(gcf,'Units','normalized');
+% set(gcf,'position',[0 0 1 .91]);
+% tic
+% 
+% % keep processing keystrokes until the maze is solved
+% while ~all(cursor_pos == [col,row])
+%     waitfor(gcf,'CurrentCharacter')
+%     set(gcf,'CurrentCharacter','~') % update to another character so repeats are recognized
+%     % key is updated by move_spot
+%     switch double(key(1))
+%         case 108 % left
+%             if ptr_left(current_id)<0 % check for legal move
+%                 current_id=-ptr_left(current_id);
+%                 text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color',[.8,.8,.8]);
+%                 cursor_pos(1)=cursor_pos(1)-1;
+%                 text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color','r');
+%             end
+%         case 114 % right
+%             if ptr_right(current_id)<0 % check for legal move
+%                 current_id=-ptr_right(current_id);
+%                 text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color',[.8,.8,.8]);
+%                 cursor_pos(1)=cursor_pos(1)+1;
+%                 text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color','r');
+%             end
+%         case 117 % up
+%             if ptr_up(current_id)<0 % check for legal move
+%                 current_id=-ptr_up(current_id);
+%                 text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color',[.8,.8,.8]);
+%                 cursor_pos(2)=cursor_pos(2)-1;
+%                 text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color','r');
+%             end
+%         case 100 % down
+%             if ptr_down(current_id)<0 % check for legal move
+%                 current_id=-ptr_down(current_id);
+%                 text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color',[.8,.8,.8]);
+%                 cursor_pos(2)=cursor_pos(2)+1;
+%                 text(cursor_pos(1),cursor_pos(2),'\diamondsuit','HorizontalAlignment','Center','color','r');
+%             end
+% 
+%         otherwise
+%     end
+% 
+% end
+% 
+% thyme=toc;
+% title(cat(2,' Winning Time ',num2str(round(thyme*100)/100),'(sec)'),'FontSize',20)
+
 f = getframe(gcf);
 delete(gcf);
-Im = im2double(rgb2gray(f.cdata));
-imsize = size(Im);
-
-
-    % Create the edge map
-    sigma = 1;
-%     smIm = abs(imfilter(Im, fspecial('laplacian'), 'same', 'replicate'));
-%     smIm = imfilter(smIm, fspecial('gaussian', ceil(sigma*[3 3]), sigma), 'same', 'replicate');
-    smIm = double(Im > 0.5);
-%     smIm = smIm/2;
-%     smIm(50:70, 65:85) = 1;
-%     smIm(340:360, 500:520) = 1;
-
-    
-
-    se = strel('ball',50,50);
-    smIm = 50-imdilate(1-smIm,se);
-    
-    LeftRight = [zeros(size(smIm,1),1) diff(smIm, [], 2)];
-    UpDown = [zeros(1,size(smIm,2)); diff(smIm, [], 1)];
-
-    [xx,yy] = meshgrid(1:imsize(2), 1:imsize(1));
-%     dx = xx - 510-1;
-%     dy = yy - 350-1;
-    dx = 510 - xx;
-    dy = 350 - yy;
-    newMag =  sqrt(dx.*dx + dy.*dy);
-    newMag = 1 - newMag / max(newMag(:));
-
-%     smIm = 0.25*smIm + 0.75*newMag;
-    
-    % Display the figure
-    hf = figure;
-%     ha(1) = subplot(121);
-%     imshow(Im)
-%     title('Original Image')
-    ha(2) = subplot(1,1,1);
-    hIm = imshow(smIm,[]);
-    hold on
-    title('Energy function with current spline')    
-    
-    % Get the initial snake coordinates
-    x_s = nan; y_s = nan;
-    hLine = plot(ha(2), x_s, y_s, 'ro-');
-%     theta = linspace(0,2*pi,10);
-%     x_s = [70 linspace(75,510,10) 515 515 70 70];
-%     y_s = [60 linspace(60,350,10) 350 370 370 60];
-    x_s = linspace(75,510,10);
-    y_s = linspace(60,350,10);
-    set(hLine, 'XData', x_s, 'YData', y_s);
-    
-    % Upsample & create a spline
-    steps = 0:(length(x_s)-1);
-    newSteps = 0:0.05:(length(x_s)-1);
-    pp = spline(steps,[x_s' y_s']', newSteps);
-    x_s = pp(1,:)';
-    y_s = pp(2,:)';
-    hSpline = plot(x_s,y_s,'b');
-    
-    % Create the GVF
-    mu = 0.2;%1;
-    smIm = padarray(smIm, [1 1], 'symmetric', 'both');
-    [fx,fy] = gradient(smIm);
-
-    u = fx;
-    v = fy;
-%     dx = 510-75;
-%     dy = 350-60;
-%     xind = 75:510;
-%     yind = 60:350;
-% %     u(yind,xind) = fx(yind,xind) + 0.25*dx/hypot(dx,dy);
-% %     v(yind,xind) = fy(yind,xind) + 0.25*dy/hypot(dx,dy);
-    newMag = padarray(newMag, [1 1], 'symmetric', 'both');
-    [fx2,fy2] = gradient(newMag);
-% %     u = fx + fx2;%0.25*fx2./hypot(fx2,fy2);
-% %     v = fy + fy2;%0.25*fy2./hypot(fx2,fy2);
-% %     edgeX = 0.5*fx2./(hypot(fx2,fy2) + eps);
-% %     edgeY = 0.5*fy2./(hypot(fx2,fy2) + eps);
-% %     u(Im > 0.5) = edgeX(Im > 0.5);
-% %     v(Im > 0.5) = edgeY(Im > 0.5);
-% %     gradMag = fx.*fx + fy.*fy;
-    gradMag = u.*u + v.*v;
-        
-%     gradMag(50:70, 65:85) = 0;
-%     gradMag(340:360, 500:520) = 0;
-    
-    for n = 1:80
-        u = padarray(u(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
-        v = padarray(v(2:end-1, 2:end-1), [1 1], 'symmetric', 'both');
-        u = u + mu*4*del2(u) - gradMag.*(u-fx);
-        v = v + mu*4*del2(v) - gradMag.*(v-fy);
-    end
-    u = u(2:end-1,2:end-1);
-    v = v(2:end-1,2:end-1);
-    
-    maxEdge = max(max(hypot(u,v))); %0.25
-    edgeX = maxEdge*fx2./(hypot(fx2,fy2) + eps);
-    edgeY = maxEdge*fy2./(hypot(fx2,fy2) + eps);
-    
-% %     u(Im > 0.5) = u(Im > 0.5)+edgeX(Im > 0.5);
-% %     v(Im > 0.5) = v(Im > 0.5)+edgeY(Im > 0.5);
-
-%     u = zeros(size(u)); v = zeros(size(v));
-    clockwise = true;
-%     clockwise = false;
-    if clockwise 
-        v(LeftRight < 0) = -maxEdge/2;    u(LeftRight < 0) = 0;
-        v(LeftRight > 0) = maxEdge/2;     u(LeftRight < 0) = 0;
-        %v(UpDown < 0) = 0;              
-        u(UpDown < 0) = maxEdge/2;
-        %v(UpDown > 0) = 0;              
-        u(UpDown > 0) = -maxEdge/2;
-    else
-        v(LeftRight < 0) = maxEdge/2;    u(LeftRight < 0) = 0;
-        v(LeftRight > 0) = -maxEdge/2;     u(LeftRight < 0) = 0;
-        v(UpDown < 0) = 0;              u(UpDown < 0) = -maxEdge/2;
-        v(UpDown > 0) = 0;              u(UpDown > 0) = maxEdge/2;
-    end    
-
-% 
-%     v(LeftRight < 0) = -maxEdge;    u(LeftRight < 0) = 0;
-%     v(LeftRight > 0) = maxEdge;     u(LeftRight < 0) = 0;
-%     v(UpDown < 0) = 0;              u(UpDown < 0) = maxEdge;
-%     v(UpDown > 0) = 0;              u(UpDown > 0) = -maxEdge;
-
-    u(Im < 0.5) = edgeX(Im < 0.5);
-    v(Im < 0.5) = edgeY(Im < 0.5);
-    
-    magGVF = hypot(u,v) + 1e-10;
-    fx = u./magGVF;
-    fy = v./magGVF;
-    
-%     fx2(Im>0.5) = 0;
-%     fy2(Im>0.5) = 0;
-    
-    figure, quiver(fx,fy), axis ij, axis image
-%     ha(3) = subplot(223); hq = quiver(fx,fy); axis ij, axis image
-% %     ha(3) = subplot(223); hq = quiver(fx2,fy2); axis ij, axis image
-    title('Gradients')
-
-%     ha(3) = subplot(223); imagesc(magGVF);
-
-    % Create the components of the Euler equation
-    % [Tension, rigidity, stepsize, energy portion]
-    alpha = 0.3;% 0.4;%0.5; 
-    beta = 0.0;%0.5;
-    gamma = 1;
-    kappa = 0.96;
-    A = imfilter(eye(length(newSteps)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
-
-    % Compute the inverse of A by LU decompositions since it is a
-    % pentadiagonal banded matrix
-    [L,U] = lu(A + gamma*eye(size(A)));
-    invA = inv(U) * inv(L);
-        
-%     ha(4) = subplot(224);
-%     imagesc(smIm), hold on, title('Results')
-    % Iteratively solve the Euler equations for x & y
-    set([hLine], 'Visible', 'off')
-    try
-        set([hq], 'Visible', 'off')
-    end
-    corder = jet(8);
-    count = 1;
-    for n = 1:2000 %400
-        newx = gamma*x_s + kappa*interp2(fx, x_s, y_s, '*linear', 0);
-        newy = gamma*y_s + kappa*interp2(fy, x_s, y_s, '*linear', 0);
-        
-%         newx([1 end]) = [75 510];
-%         newy([1 end]) = [60 350];
-        
-        x_s = invA*newx;
-        y_s = invA*newy;
-        
-        % Redistribute the points along the curve
-        x_s([1 end]) = [75 510];
-        y_s([1 end]) = [60 350];   
-        dStep = cumsum(hypot([0; diff(x_s)],[0; diff(y_s)]));
-        newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
-%         dStep = cumsum(hypot(diff(x_s),diff(y_s)));
-%         newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
-        x_s = interp1(dStep,x_s,newStep);
-        y_s = interp1(dStep,y_s,newStep);
-        
-        set(hSpline, 'XData', x_s, 'YData', y_s, 'Marker', 'o');
-        drawnow
-%         if any(n == [1 10 20 50 100:100:400])
-%             subplot(224), hold on
-% %             plot(x_s([1:end 1]), y_s([1:end 1]), 'Color', corder(count,:))
-%             plot(x_s, y_s, 'Color', corder(count,:), 'Marker', '.')
-%             count = count + 1;
-%         end            
-%         pause(0.1)
-    end
-%     set(hSpline, 'Color', [0 0.5 0])
-    
-    
-%     ha(4) = subplot(224);
-%     imshow(Im), hold on,
-%     plot(x_s([1:end 1]),y_s([1:end 1]),'r-')
-    try
-        set(hq, 'Visible', 'on')
-    end
-    
-    linkaxes(ha, 'xy')
-    
-%     figure, quiver(u./hypot(u,v),v./hypot(u,v)), axis ij, axis image
-%     figure, quiver(u,v), axis ij, axis image
-    
-%     newIm = double(Im > 0.5);
-%     dx = [zeros(size(newIm,1),1) diff(newIm, [], 2)];
-%     dy = [zeros(1,size(newIm,2)); diff(newIm, [], 1)];
-%     
-%     newIm(dx<0) = 2; % left - down
-%     newIm(dx>0) = 3; % right - up
-%     newIm(dy<0) = 4; % up - left
-%     newIm(dy>0) = 5; % down - right
-    
-%     figure, imagesc(newIm);
+MZ = im2double(rgb2gray(f.cdata));
     
 return
 
@@ -323,8 +155,6 @@ set(gca,'YDir','reverse')
 h = get(gca, 'Children');
 set(h, 'LineWidth', 5)
 return
-
-
 
 
 function [state, ptr_left, ptr_up, ptr_right, ptr_down]=make_pattern(row,col,pattern,id, rr, cc, state, ptr_left, ptr_up, ptr_right, ptr_down)

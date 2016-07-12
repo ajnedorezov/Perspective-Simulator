@@ -17,7 +17,7 @@ function [x,y] = snakedeform(x,y,alpha,beta,gamma,kappa,fx,fy,ITER)
 %   fixed in placed. It no longer creates a loop between the start and
 %   endpoints. Updated the inverse matrix composition to use LU
 %   decomposition for speed. Changed interp2 to return 0 instead of
-%   nan
+%   nan. Uniformly redistribute the sample points along the snake
 
 
 % generates the parameters for snake
@@ -64,6 +64,11 @@ for count = 1:ITER,
    x = invAI * (gamma* x + kappa*vfx);
    y = invAI * (gamma* y + kappa*vfy);
 %    set(h, 'XData', x(:), 'YData', y(:));
-%    1;%
+
+    % Redistribute the samples uniformly over the snake
+    dStep = cumsum(hypot([0; diff(x)],[0; diff(y)]));
+    newStep = linspace(rand/max(dStep),max(dStep),length(dStep))';
+    x = interp1(dStep,x,newStep);
+    y = interp1(dStep,y,newStep);
 end
 % delete(h)
