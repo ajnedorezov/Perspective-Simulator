@@ -1,7 +1,7 @@
 %% Generate the labyrinth
 % I = maze(5, 5, 'c', 1);   % figure 5-1
-% I = maze(5, 5, 'c', 3);   % figure 5-7
-I = maze(5, 5, 'c', 5);   % figure 5-8
+I = maze(5, 5, 'c', 3);   % figure 5-7
+% I = maze(5, 5, 'c', 5);   % figure 5-8
 % I = maze(5, 5, 'c', 4);   % figure 5-12
 
 % I = maze(5, 5, 'c', n);
@@ -71,6 +71,7 @@ else
     dy = y1 - rr;
 end
 newMag =  sqrt(dx.*dx + dy.*dy) + eps;
+newMag = 1 - newMag./max(newMag(:));
 
 ind = I < 0.5;
 px(ind) = dx(ind)./newMag(ind);
@@ -104,9 +105,10 @@ nIter = 10;
 corder = jet(nIter );
 count = 1;
 for n = 1:nIter
-    [x, y] = snakedeform(x,y,0.4,0.1,1,2,px,py,40);
+%     [x, y] = snakedeform(x,y,0.4,0.1,1,2,px,py,40);
+   [x, y] = snakedeform(x,y,1,0.1,1,4,px,py,40);
 
-    plot(ha(4), x(:), y(:), 'Color', corder(count,:), 'linewidth', 1, 'marker', 'o');
+    plot(ha(4), x(:), y(:), 'Color', corder(count,:), 'linewidth', 1, 'marker', 'none');
     plot([x1 x2], [y1 y2], 'rx', 'MarkerSize', 10);
     count = count + 1;
 end
