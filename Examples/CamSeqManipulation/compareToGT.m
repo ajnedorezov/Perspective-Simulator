@@ -105,25 +105,24 @@ for n = 7959:2:8159
     edges = BW2 > 10.5;
     edgePixels = edges(nearestIPM.indices);
     
-%     % obstacle correctly identified as obstacle
-%     truePositive(count) = sum(sum(gtObstacles & isObstacle));% / sum(gtObstacles(:));
-%     % roadway incorrectly identified as obstacle
-%     falsePositive(count) = sum(sum(gtObstacles & ~isObstacle));% / sum(gtObstacles(:));
-%     % roadway correctly identified as roadway
-%     trueNegative(count) = sum(sum(gtRoadway & isObstacle));% / sum(gtRoadway(:));
-%     % obstacle incorrectly identified as roadway
-%     falseNegative(count) = sum(sum(gtRoadway & ~isObstacle));% / sum(gtRoadway(:));
-
-
     % obstacle correctly identified as obstacle
-    truePositive(count) = sum(sum(gtObstacles(edgePixels) & isObstacle(edgePixels)));% / sum(gtObstacles(:));
+    truePositive(count) = sum(sum(gtObstacles & isObstacle));% / sum(gtObstacles(:));
     % roadway incorrectly identified as obstacle
-    falsePositive(count) = sum(sum(gtObstacles(edgePixels) & ~isObstacle(edgePixels)));% / sum(gtObstacles(:));
+    falsePositive(count) = sum(sum(gtObstacles & ~isObstacle));% / sum(gtObstacles(:));
     % roadway correctly identified as roadway
-    trueNegative(count) = sum(sum(gtRoadway(edgePixels) & isObstacle(edgePixels)));% / sum(gtRoadway(:));
+    trueNegative(count) = sum(sum(gtRoadway & ~isObstacle));% / sum(gtRoadway(:));
     % obstacle incorrectly identified as roadway
-    falseNegative(count) = sum(sum(gtRoadway(edgePixels) & ~isObstacle(edgePixels)));% / sum(gtRoadway(:));
+    falseNegative(count) = sum(sum(gtRoadway & isObstacle));% / sum(gtRoadway(:));
 
+%     % obstacle correctly identified as obstacle
+%     truePositive(count) = sum(sum(gtObstacles(edgePixels) & isObstacle(edgePixels)));% / sum(gtObstacles(:));
+%     % roadway incorrectly identified as obstacle
+%     falsePositive(count) = sum(sum(gtObstacles(edgePixels) & ~isObstacle(edgePixels)));% / sum(gtObstacles(:));
+%     % roadway correctly identified as roadway
+%     trueNegative(count) = sum(sum(gtRoadway(edgePixels) & ~isObstacle(edgePixels)));% / sum(gtRoadway(:));
+%     % obstacle incorrectly identified as roadway
+%     falseNegative(count) = sum(sum(gtRoadway(edgePixels) & isObstacle(edgePixels)));% / sum(gtRoadway(:));
+% 
     sensitivity(count) = truePositive(count) / (truePositive(count) + falseNegative(count));  % Recall
     specificity(count) = trueNegative(count) / (trueNegative(count) + falsePositive(count));  % 
     precision(count) = truePositive(count) / (truePositive(count) + falsePositive(count));  % precision
@@ -135,7 +134,8 @@ for n = 7959:2:8159
     fprintf('Frame: %s\n', imName)
 end
 
-save('Examples\CamSeqManipulation\CamSeq01_EdgeResults.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity')
+save('Examples\CamSeqManipulation\CamSeq01_Results.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity')
+% save('Examples\CamSeqManipulation\CamSeq01_EdgeResults.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity')
 
 % Accuracy:
 accuracy = (sum(truePositive) + sum(trueNegative))/ (sum(truePositive) + sum(trueNegative) + sum(falsePositive) + sum(falseNegative));

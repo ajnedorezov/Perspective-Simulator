@@ -73,9 +73,9 @@ indices = myIPM.performTransformation(indIm);
 % % save('Examples\CamSeqManipulation\myIPM_smaller_nearest.mat', 'indices')
 save('Examples\CamSeqManipulation\myIPM_nearest.mat', 'indices')
 
-% for n = 1:3
-%     channel = im(:,:,n);
-%     newIm(:,:,n) = channel(indices);
-% end
-% 
-% figure, imshow(rot90(uint8(newIm),2))
+for n = 1:3
+    channel = im(:,:,n);
+    newIm(:,:,n) = channel(indices);
+end
+
+figure, imshow(rot90(uint8(newIm),2))

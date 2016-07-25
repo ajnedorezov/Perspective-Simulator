@@ -284,8 +284,8 @@ classdef Simulator2 < handle
                 
                 %% Store the results window in a video
                 if self.MakeVideo
-                    im = getframe(ax);
-                    writeVideo(mov, im.cdata);
+%                     im = getframe(ax);
+                    writeVideo(mov, rgb);
                     
                     writeVideo(movGT, rgbGT);
                 end                

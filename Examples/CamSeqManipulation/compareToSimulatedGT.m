@@ -5,9 +5,9 @@ sampleRegionI = 400:450; %->
 sampleRegionJ = 270:370; %v
 intensityRange = 35;
 
-myIPM = load('Examples\CamSeqManipulation\myIPM.mat');
+myIPM = load('@IPM\myIPM.mat');
 myIPM = myIPM.myIPM;
-nearestIPM = load('Examples\CamSeqManipulation\myIPM_nearest.mat');
+nearestIPM = load('Examples\CamSeqManipulation\myIPM_SimulatedNearest.mat');
 
 invalidPixels = (myIPM.Weights{1}==0 & myIPM.Weights{1}==0 & myIPM.Weights{3}==0);
 
@@ -57,7 +57,7 @@ while hasFrame(vid)
     % Plot the current results
     clf(figure(1)), 
     subplot(121), imshow(vidFrame)
-    title(sprintf('Current Image: %s', imName))
+    title(sprintf('Current Image: %2.2f', vid.CurrentTime))
     ylabel('Original')
     
     %% Detect obstacles by checking if its a horizontal streak
@@ -89,7 +89,7 @@ while hasFrame(vid)
     
     r = vidFrameGT(:,:,1);
     
-    nonObstacle = ismember(r, [0:7, 9:10, 30:40, 61]);
+    nonObstacle = ismember(r, [0:7, 9:10, 25:26 30:40, 61, 89:150]);
 
     labelIPM = double(nonObstacle(nearestIPM.indices));
     
@@ -108,9 +108,9 @@ while hasFrame(vid)
     % roadway incorrectly identified as obstacle
     falsePositive(count) = sum(sum(gtObstacles & ~isObstacle));% / sum(gtObstacles(:));
     % roadway correctly identified as roadway
-    trueNegative(count) = sum(sum(gtRoadway & isObstacle));% / sum(gtRoadway(:));
+    trueNegative(count) = sum(sum(gtRoadway & ~isObstacle));% / sum(gtRoadway(:));
     % obstacle incorrectly identified as roadway
-    falseNegative(count) = sum(sum(gtRoadway & ~isObstacle));% / sum(gtRoadway(:));
+    falseNegative(count) = sum(sum(gtRoadway & isObstacle));% / sum(gtRoadway(:));
 
 
 %     % obstacle correctly identified as obstacle
@@ -118,9 +118,9 @@ while hasFrame(vid)
 %     % roadway incorrectly identified as obstacle
 %     falsePositive(count) = sum(sum(gtObstacles(edgePixels) & ~isObstacle(edgePixels)));% / sum(gtObstacles(:));
 %     % roadway correctly identified as roadway
-%     trueNegative(count) = sum(sum(gtRoadway(edgePixels) & isObstacle(edgePixels)));% / sum(gtRoadway(:));
+%     trueNegative(count) = sum(sum(gtRoadway(edgePixels) & ~isObstacle(edgePixels)));% / sum(gtRoadway(:));
 %     % obstacle incorrectly identified as roadway
-%     falseNegative(count) = sum(sum(gtRoadway(edgePixels) & ~isObstacle(edgePixels)));% / sum(gtRoadway(:));
+%     falseNegative(count) = sum(sum(gtRoadway(edgePixels) & isObstacle(edgePixels)));% / sum(gtRoadway(:));
 
     sensitivity(count) = truePositive(count) / (truePositive(count) + falseNegative(count));  % Recall
     specificity(count) = trueNegative(count) / (trueNegative(count) + falsePositive(count));  % 
@@ -130,7 +130,7 @@ while hasFrame(vid)
 %     keyboard
     
 %     break
-    fprintf('Frame: %s\n', imName)
+    fprintf('Frame: %2.2f of %2.2f\n', vid.CurrentTime, vid.Duration)
 end
 
 save('Examples\CamSeqManipulation\Simulated_Results.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity')
