@@ -173,6 +173,7 @@ classdef Simulator < handle
             [x,y,z] = self.Car(self.CarParams);
 %             carlane = randi(self.RoadParams.numLanes,1,self.SimulationParams.numCars)-1;
             carlane = [2 0 1 1];
+%             carlane = [0];
             for n = 1:self.SimulationParams.numCars
                 self.MovingObjects.Cars(n) = surface(x + 10 + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
             end
@@ -220,7 +221,7 @@ classdef Simulator < handle
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('RevisedSnakeAlgorithm_Retuned.avi');
+                mov = VideoWriter('Examples\CamSeqManipulation\PathIntersectingObstacles-Case2.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -244,12 +245,17 @@ classdef Simulator < handle
             % travel 1 mile
             tic
 %             posvec = [-29*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
-            posvec = [10 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
+            posvec = [10 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
             commandedHeading = 0;
             currentYaw = 0;
             commandedSpeed = 29; % Travel @ 65 mph
             currentSpeed = commandedSpeed;
-            for t = 0:delT:40% 34.25;%
+            intersectionCounter = 1;
+            
+            endTime = 35;
+            downRangeToObstacleOnPath = inf(1, length(0:delT:endTime));
+            closestDownRangeToObstacle = inf(1, length(0:delT:endTime));
+            for t = 0:delT:endTime% 34.25;%
                 if ~ishandle(self.HD.MainView)
                     break
                 end
@@ -469,6 +475,26 @@ classdef Simulator < handle
                 quiver(0,0, ptX, ptY, 'c', 'Parent', ax, 'LineWidth', 3)
                 
 %                 keyboard
+
+                %%
+                obstacleOnPath = interp2(double(isObstacle), snakeX, snakeY, 'nearest');
+                obstacleIntersectionIndex = find(obstacleOnPath==1, 1, 'first');
+                if ~isempty(obstacleIntersectionIndex)
+                    downRangeToObstacleOnPath(intersectionCounter) = snakeY(obstacleIntersectionIndex)*sy;
+                    
+                    plot(ax, (xcenter-snakeX(obstacleIntersectionIndex))*sx, downRangeToObstacleOnPath(intersectionCounter), 'cx', 'markersize', 10, 'linewidth', 3);
+                else
+                    downRangeToObstacleOnPath(intersectionCounter) = inf;
+                end
+                
+                closestObstacle = isObstacle(:, 272);
+                closestObstacleIntersectionIndex = find(closestObstacle==1, 1, 'first');
+                if ~isempty(closestObstacleIntersectionIndex)
+                    closestDownRangeToObstacle(intersectionCounter) = closestObstacleIntersectionIndex*sy;
+                end
+                
+                intersectionCounter = intersectionCounter + 1;
+                
                 %% Store the results window in a video
                 if self.MakeVideo
                     im = getframe(ax);
@@ -476,6 +502,11 @@ classdef Simulator < handle
                 end                
                 drawnow
             end
+            
+%             dataToSave.downRangeToObstacleOnPath = downRangeToObstacleOnPath;
+%             dataToSave.closestDownRangeToObstacle = closestDownRangeToObstacle;
+%             save('Examples\CamSeqManipulation\downRangeToObstacle - Case 2.mat', '-struct', 'dataToSave')
+            figure, plot(1:(intersectionCounter-1), downRangeToObstacleOnPath, 'bo', 1:(intersectionCounter-1), closestDownRangeToObstacle, 'ro')
             if self.MakeVideo
                 close(mov)
             end
