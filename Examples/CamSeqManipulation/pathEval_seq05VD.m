@@ -1,14 +1,16 @@
 %% Compare Obstacle classifier to ground truth
 
-sampleRegionI = 580:650; %->
-sampleRegionJ = 360:560; %v
+vid = VideoReader('External\seq05VD\0005VD.avi');
+
+sampleRegionI = 290:320; %->
+sampleRegionJ = 260:380; %v
 intensityRange = 35;
 
-myIPM = load('Examples\CamSeqManipulation\myIPM.mat');
+myIPM = load('Examples\CamSeqManipulation\myIPM_smaller.mat');
 myIPM = myIPM.myIPM;
-nearestIPM = load('Examples\CamSeqManipulation\myIPM_nearest.mat');
+nearestIPM = load('Examples\CamSeqManipulation\myIPM_smaller_nearest.mat');
 
-mov = VideoWriter('Examples\CamSeqManipulation\PathIntersectingObstacles-CamSeqMain.avi');
+mov = VideoWriter('Examples\CamSeqManipulation\PathIntersectingObstacles-seq05VD.avi');
 open(mov);
 
 invalidPixels = (myIPM.Weights{1}==0 & myIPM.Weights{1}==0 & myIPM.Weights{3}==0);
@@ -22,15 +24,19 @@ intersectionCounter = 1;
 timeSteps = 7959:2:8159;
 downRangeToObstacleOnPath = inf(1, length(timeSteps));
 closestDownRangeToObstacle = inf(1, length(timeSteps));
-for n = timeSteps
+while hasFrame(vid)
     if ~ishandle(hf)
         break
     end
     
     %% Grab the next video frame
-    imName = ['External\CamSeq01\0016E5_0' num2str(n)];
-    vidFrame= imread([imName '.png']);
-    vidFrameGT = imread([imName '_L.png']);
+%     imName = ['External\CamSeq01\0016E5_0' num2str(n)];
+%     vidFrame= imread([imName '.png']);
+%     vidFrameGT = imread([imName '_L.png']);
+%     for n = 1:30
+        vidFrame = readFrame(vid);
+%     end
+%     vidFrameGT = readFrame(vidGT);
     
     imsize = size(vidFrame);
     binaryIm = zeros(imsize(1), imsize(2), 3);
@@ -61,10 +67,10 @@ for n = timeSteps
         channel = vidFrame(:,:,m);
         rgbIPM(:,:,m) = myIPM.performTransformation(double(channel));
         
-        channel = vidFrameGT(:,:,m);
-        ipmchannel = channel(nearestIPM.indices);
-        ipmchannel(nearestIPM.indices==1) = 0;
-        gtIPM_color(:,:,m) = ipmchannel;
+%         channel = vidFrameGT(:,:,m);
+%         ipmchannel = channel(nearestIPM.indices);
+%         ipmchannel(nearestIPM.indices==1) = 0;
+%         gtIPM_color(:,:,m) = ipmchannel;
     end
 %     grayIm = rgb2gray(newVidFrame);
 %     newVidFrame = binaryIm;
@@ -117,13 +123,13 @@ for n = timeSteps
     hold(ax, 'on')
     
     
-    r = vidFrameGT(:,:,1);
-    g = vidFrameGT(:,:,2);
-    b = vidFrameGT(:,:,3);
-    nonObstacle = r==128 & g==0 & b==192 |...   %LaneMkgsDriv
-                  r==128 & g==64 & b==128;      %Road
-
-    labelIPM = double(nonObstacle(nearestIPM.indices));
+%     r = vidFrameGT(:,:,1);
+%     g = vidFrameGT(:,:,2);
+%     b = vidFrameGT(:,:,3);
+%     nonObstacle = r==128 & g==0 & b==192 |...   %LaneMkgsDriv
+%                   r==128 & g==64 & b==128;      %Road
+% 
+%     labelIPM = double(nonObstacle(nearestIPM.indices));
     
 %     gtObstacles = ~nonObstacle(nearestIPM.indices) & ~invalidPixels;
 %     gtRoadway = nonObstacle(nearestIPM.indices) & ~invalidPixels;
@@ -210,12 +216,13 @@ for n = timeSteps
 %     keyboard
     
 %     break
-    fprintf('Frame: %d\n', n)
+    fprintf('Frame: %d\n', count)
     
     im = getframe(hf);
     writeVideo(mov, im.cdata);
+    count = count + 1;
 end
 close(mov)
 
-save('Examples\CamSeqManipulation\CamSeq01_patheval_Results.mat', 'downRangeToObstacleOnPath', 'closestDownRangeToObstacle');
+save('Examples\CamSeqManipulation\seq05VD_patheval_Results.mat', 'downRangeToObstacleOnPath', 'closestDownRangeToObstacle');
 figure, plot(1:(intersectionCounter-1), downRangeToObstacleOnPath, 'bo', 1:(intersectionCounter-1), closestDownRangeToObstacle, 'ro')
