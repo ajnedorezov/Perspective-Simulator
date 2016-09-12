@@ -22,7 +22,7 @@ classdef Simulator < handle
         mi2m = 1609.34;     % Miles to Meters
         
         SimulationDistance = 1 * 1609.34; % 1 mile
-        SimulationParams = struct('numCars', 4);
+        SimulationParams = struct('numCars', 2);
 
         RoadParams = struct('numLanes', 3,...
                             'laneWidth', 3,... %m
@@ -172,10 +172,12 @@ classdef Simulator < handle
             %% Draw some "Cars"
             [x,y,z] = self.Car(self.CarParams);
 %             carlane = randi(self.RoadParams.numLanes,1,self.SimulationParams.numCars)-1;
-            carlane = [2 0 1 1];
+%             carlane = [2 0 1 1];
+            carlane = [1 2];
 %             carlane = [0];
             for n = 1:self.SimulationParams.numCars
-                self.MovingObjects.Cars(n) = surface(x + 10 + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
+%                 self.MovingObjects.Cars(n) = surface(x + 10 + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
+                self.MovingObjects.Cars(n) = surface(x + 10 + 25, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
             end
             
         end
@@ -373,7 +375,8 @@ classdef Simulator < handle
                 for n = 1:length(stats)
                     obstacles(n) = stats(n).BoundingBox(4) > 100 && stats(n).BoundingBox(4) > stats(n).BoundingBox(3) && stats(n).BoundingBox(3) > 30;
                 end
-                isObstacle(:,:,1) = ismember(newLabels, find(obstacles));
+%                 isObstacle(:,:,1) = ismember(newLabels, find(obstacles));
+                isObstacle(:,:,1) = imdilate(ismember(newLabels, find(obstacles)), true(1,35));
                 
                 %% Do the maze path following algorithm stuff
 
@@ -386,21 +389,72 @@ classdef Simulator < handle
                 % Compute the GVF of the edge map f
                 [px,py] = GVF(f, 0.2, 40);
                 
+%                 % Make the magnitude of all vectors equal
+%                 magGVF = hypot(px,py) + 1e-10;
+%                 px = px./magGVF;
+%                 py = py./magGVF;
+
+                % Make the obstacle have vectors towards the vanishing point
+                imsize = size(px);
+                
+                % Apply a clockwise/counterclockwise rotation around the edges
+                LeftRight = [zeros(size(f,1),1) diff(f, [], 2)];
+                UpDown = [zeros(1,size(f,2)); diff(f, [], 1)];
+                maxEdge = 1;
+
+                clockwise = true;
+%                 clockwise = false;
+                if clockwise 
+                    py(LeftRight < 0) = -maxEdge/2;    px(LeftRight < 0) = 0;
+                    py(LeftRight > 0) = maxEdge/2;     px(LeftRight > 0) = 0;
+                    py(UpDown < 0) = 0;
+                    py(UpDown > 0) = 0;
+                    px(UpDown < 0) = maxEdge/2;
+                    px(UpDown > 0) = -maxEdge/2;
+                else
+                    py(LeftRight < 0) = maxEdge/2;    px(LeftRight < 0) = 0;
+                    py(LeftRight > 0) = -maxEdge/2;     px(LeftRight > 0) = 0;
+                    px(UpDown < 0) = -maxEdge/2;
+                    px(UpDown > 0) = maxEdge/2;
+                end    
+                
+                % Apply a slope towards the goal point
+                towardsGoal = true;
+%                 towardsGoal = false;
+                [cc,rr] = meshgrid(1:imsize(2), 1:imsize(1));
+                if towardsGoal
+                    dx = vpx - cc;
+                    dy = vpy - rr;
+                else
+                    dx = vpx - cc;
+                    dy = vpy - rr;
+                end
+                newMag =  sqrt(dx.*dx + dy.*dy) + eps;
+                newMag = 1 - newMag./max(max(newMag));
+                [fx2,fy2] = gradient(newMag);
+                mag = hypot(fx2,fy2) + eps;
+                fx2 = fx2./mag;
+                fy2 = fy2./mag;
+
+                pmag = max(max(hypot(px,py)));
+                px = px/pmag;
+                py = py/pmag;
+
+                px(isObstacle) = fx2(isObstacle);
+                py(isObstacle) = fy2(isObstacle);
+
                 % Make the magnitude of all vectors equal
                 magGVF = hypot(px,py) + 1e-10;
                 px = px./magGVF;
                 py = py./magGVF;
 
-                % Make the obstacle have vectors towards the vanishing point
-                imsize = size(px);
-
-                [cc,rr] = meshgrid(1:imsize(2), 1:imsize(1));
-                dy = vpy - rr;
-                dx = vpx - cc;
-                newMag =  sqrt(dx.*dx + dy.*dy) + eps;
-
-                px(isObstacle)  = 0.75*px(isObstacle) + 0.25*dx(isObstacle)./newMag(isObstacle);
-                py(isObstacle)  = 0.75*py(isObstacle) + 0.25*dy(isObstacle)./newMag(isObstacle);
+%                 [cc,rr] = meshgrid(1:imsize(2), 1:imsize(1));
+%                 dy = vpy - rr;
+%                 dx = vpx - cc;
+%                 newMag =  sqrt(dx.*dx + dy.*dy) + eps;
+% 
+%                 px(isObstacle)  = 0.75*px(isObstacle) + 0.25*dx(isObstacle)./newMag(isObstacle);
+%                 py(isObstacle)  = 0.75*py(isObstacle) + 0.25*dy(isObstacle)./newMag(isObstacle);
 
 %                 % Plot the gradient vectors
 %                 [qx,qy] = meshgrid(1:10:imsize(1), 1:10:imsize(2));
@@ -431,8 +485,13 @@ classdef Simulator < handle
                 
                 % Grab a point ~50ft in down the curve (i.e.
                 % 50ft/300ft*100pts --> 17th index)
-                ptX = (xcenter - snakeX(17))*sx;
-                ptY = snakeY(17)*sy;
+                drInd = interp1(snakeY*sy, 1:length(snakeY), 50, 'nearest');
+                if isempty(drInd) || isnan(drInd)
+                    % rough estimate: 50ft/300ft*100pts --> 17th index
+                    drInd = 17;
+                end
+                ptX = (xcenter - snakeX(drInd))*sx;
+                ptY = snakeY(drInd)*sy;
                 commandedHeading = atan2(ptX,ptY);
 
                 %% Update the results display
