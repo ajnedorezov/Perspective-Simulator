@@ -1,8 +1,11 @@
 % Script to create the ground truth position of the vanishing point
 
 %% Load the video
-vid = VideoReader('Downsampled To Work Video.avi');
-timeRange = [0 10];
+% vid = VideoReader('Downsampled To Work Video 2.avi');
+% vid = VideoReader('External\seq05VD\0005VD.avi');
+% timeRange = [0 10];
+vid = VideoReader('RainVideo-Downsampled.avi');
+timeRange = [47 57];
 
 %% Collect VP data
 % For each frame, display it ask the user where the vanishing point is, and
@@ -34,7 +37,7 @@ save('Thesis Images\Chapter 3\Data\VPLocations_0to300_SampleSet3', 'gtVanishingP
 return
 
 %% Cluster the different data sets into 1 final version
-numSets = 2;
+numSets = 3;
 xData = [];
 yData = [];
 for n = 1:numSets

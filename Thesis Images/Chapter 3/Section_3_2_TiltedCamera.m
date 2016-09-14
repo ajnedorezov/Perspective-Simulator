@@ -2,29 +2,38 @@
 % Comparing VP tracker to gt labels
 
 %% Load the video
-vid = VideoReader('Downsampled To Work Video.avi');
+vid = VideoReader('External\seq05VD\0005VD.avi');
 timeRange = [0 10]; % frames 0 to 300
-gtData = load('Thesis Images\Chapter 3\Data\Downsampled To Work\VPLocations_0to300.mat');
+gtData = load('Thesis Images\Chapter 3\Data\seq05VD\VPLocations_0to300.mat');
 
 %% The VP Tracker Algorithm plotting results every 0.5 sec (i.e. 15 frames)
 imsize = [vid.Width vid.Height];
 myVPTracker = VPTracker(1000, imsize(1:2));
 
-while vid.CurrentTime <= timeRange(1)
-    im = readFrame(vid);
-end
+% while vid.CurrentTime <= timeRange(1)
+%     im = readFrame(vid);
+% end
+hf = figure(1);
+ax = gca(hf);
 
 vpTrackerResults = [];
 frame = 1;
-while vid.CurrentTime <= timeRange(2)
+% while vid.CurrentTime <= timeRange(2)
+for frame = max(timeRange(1)*vid.FrameRate, 1):timeRange(2)*vid.FrameRate
+    im = read(vid, frame);
     fprintf('Frame: %d\n', frame)
     myVPTracker.Update(im, [0 0]);
     
     vpTrackerResults(frame,:) = myVPTracker.prior.mean;
     
+    cla(ax);
+    imshow(im, 'Parent', ax); hold on,
     
-    im = readFrame(vid);
-    frame = frame + 1;
+    myVPTracker.PlotResults(ax, 2)
+    
+%     im = readFrame(vid);
+%     frame = frame + 1;
+    drawnow
 end
 
 %% Compute the error between MCT & GT
@@ -33,7 +42,7 @@ error = hypot(locDelta(:,1), locDelta(:,2));
 
 stdMagnitude = hypot(gtData.pixelDeviation(:,1), gtData.pixelDeviation(:,2));
 
-save('Thesis Images\Chapter 3\Data\Downsampled To Work\ErrorData.mat', 'locDelta', 'vpTrackerResults', 'error', 'stdMagnitude');
+save('Thesis Images\Chapter 3\Data\seq05VD\ErrorData.mat', 'locDelta', 'vpTrackerResults', 'error', 'stdMagnitude');
 
 %% Create a plot of the error between ground truth and tracker estimate
 % figure
@@ -65,4 +74,4 @@ xlabel('Frame #')
 
 linkaxes(ax, 'x')
 
-saveas(gcf, 'Thesis Images\Chapter 3\figure_3_7-MCTTrackerVsGroundTruth', 'png');
+saveas(gcf, 'Thesis Images\Chapter 3\figure_3_9-MCTTrackerVsGroundTruthTilted', 'png');

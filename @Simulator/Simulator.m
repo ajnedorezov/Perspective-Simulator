@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-%         MakeVideo = true;
-        MakeVideo = false;
+        MakeVideo = true;
+%         MakeVideo = false;
         
         Lighting
     end
@@ -223,7 +223,7 @@ classdef Simulator < handle
         function Simulate(self)
             delT = 1/8;
             if self.MakeVideo
-                mov = VideoWriter('Examples\CamSeqManipulation\PathIntersectingObstacles-Case2.avi');
+                mov = VideoWriter('Examples\CamSeqManipulation\PathIntersectingObstacles-Case4.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -254,7 +254,7 @@ classdef Simulator < handle
             currentSpeed = commandedSpeed;
             intersectionCounter = 1;
             
-            endTime = 35;
+            endTime = 7.5;
             downRangeToObstacleOnPath = inf(1, length(0:delT:endTime));
             closestDownRangeToObstacle = inf(1, length(0:delT:endTime));
             for t = 0:delT:endTime% 34.25;%
@@ -501,8 +501,8 @@ classdef Simulator < handle
 %                 ax = gca(figure(999));
 %                 cla(ax);
 %                 imshow(rgb); hold on
-                
-                % Draw the VP Results
+%                 
+%                 % Draw the VP Results
 %                 self.aVars.VPTracker.PlotResults(ax, 0);
 %                 self.aVars.VPTracker.PlotResults(ax, 2);
                 
