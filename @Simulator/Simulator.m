@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-        MakeVideo = true;
-%         MakeVideo = false;
+%         MakeVideo = true;
+        MakeVideo = false;
         
         Lighting
     end
@@ -173,6 +173,7 @@ classdef Simulator < handle
             [x,y,z] = self.Car(self.CarParams);
 %             carlane = randi(self.RoadParams.numLanes,1,self.SimulationParams.numCars)-1;
 %             carlane = [2 0 1 1];
+%             carlane = [2 0 1 2];
             carlane = [1 2];
 %             carlane = [0];
             for n = 1:self.SimulationParams.numCars
@@ -221,9 +222,9 @@ classdef Simulator < handle
         end
         
         function Simulate(self)
-            delT = 1/8;
+            delT = 1/3;
             if self.MakeVideo
-                mov = VideoWriter('Examples\CamSeqManipulation\PathIntersectingObstacles-Case4.avi');
+                mov = VideoWriter('Examples\CamSeqManipulation\PathIntersectingObstacles-Case4_v2.avi');
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -246,15 +247,16 @@ classdef Simulator < handle
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
             tic
-%             posvec = [-29*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
-            posvec = [10 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
+            posvec = [-45*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
+%             posvec = [10 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
+%             posvec = [10 1*self.RoadParams.laneWidth/2 self.CameraParams.height];
             commandedHeading = 0;
             currentYaw = 0;
             commandedSpeed = 29; % Travel @ 65 mph
             currentSpeed = commandedSpeed;
             intersectionCounter = 1;
             
-            endTime = 7.5;
+            endTime = 10; %30; %7.5;
             downRangeToObstacleOnPath = inf(1, length(0:delT:endTime));
             closestDownRangeToObstacle = inf(1, length(0:delT:endTime));
             for t = 0:delT:endTime% 34.25;%
@@ -275,7 +277,7 @@ classdef Simulator < handle
                 camtarget(targvec);
                 
                 % Move the cars
-                for m = 1:self.SimulationParams.numCars
+                for m = 1%:self.SimulationParams.numCars
                     xpos = get(self.MovingObjects.Cars(m), 'XData');
                     set(self.MovingObjects.Cars(m), 'XData', xpos + 26*delT)
                 end
@@ -402,9 +404,10 @@ classdef Simulator < handle
                 UpDown = [zeros(1,size(f,2)); diff(f, [], 1)];
                 maxEdge = 1;
 
-                clockwise = true;
+%                 clockwise = true;
 %                 clockwise = false;
-                if clockwise 
+%                 if clockwise 
+                if posvec(2) > 4*self.RoadParams.laneWidth/2
                     py(LeftRight < 0) = -maxEdge/2;    px(LeftRight < 0) = 0;
                     py(LeftRight > 0) = maxEdge/2;     px(LeftRight > 0) = 0;
                     py(UpDown < 0) = 0;
@@ -564,8 +567,8 @@ classdef Simulator < handle
             
 %             dataToSave.downRangeToObstacleOnPath = downRangeToObstacleOnPath;
 %             dataToSave.closestDownRangeToObstacle = closestDownRangeToObstacle;
-%             save('Examples\CamSeqManipulation\downRangeToObstacle - Case 2.mat', '-struct', 'dataToSave')
-            figure, plot(1:(intersectionCounter-1), downRangeToObstacleOnPath, 'bo', 1:(intersectionCounter-1), closestDownRangeToObstacle, 'ro')
+%             save('Examples\CamSeqManipulation\downRangeToObstacle - Case 2v2.mat', '-struct', 'dataToSave')
+            figure, plot(1:(intersectionCounter-1), downRangeToObstacleOnPath, 'bo', 1:(intersectionCounter-1), closestDownRangeToObstacle, 'rx')
             if self.MakeVideo
                 close(mov)
             end
