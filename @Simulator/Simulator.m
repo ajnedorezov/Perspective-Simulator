@@ -22,7 +22,7 @@ classdef Simulator < handle
         mi2m = 1609.34;     % Miles to Meters
         
         SimulationDistance = 1 * 1609.34; % 1 mile
-        SimulationParams = struct('numCars', 2);
+        SimulationParams = struct('numCars', 1);
 
         RoadParams = struct('numLanes', 3,...
                             'laneWidth', 3,... %m
@@ -247,8 +247,8 @@ classdef Simulator < handle
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
             tic
-%             posvec = [-45*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
-            posvec = [10 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
+            posvec = [-10*delT 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
+%             posvec = [10 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
 %             posvec = [10 1*self.RoadParams.laneWidth/2 self.CameraParams.height];
             commandedHeading = 0;
             currentYaw = 0;
@@ -277,7 +277,7 @@ classdef Simulator < handle
                 camtarget(targvec);
                 
                 % Move the cars
-                for m = 1%:self.SimulationParams.numCars
+                for m = 1:self.SimulationParams.numCars
                     xpos = get(self.MovingObjects.Cars(m), 'XData');
                     set(self.MovingObjects.Cars(m), 'XData', xpos + 26*delT)
                 end
@@ -407,7 +407,7 @@ classdef Simulator < handle
 %                 clockwise = true;
 %                 clockwise = false;
 %                 if clockwise 
-                if posvec(2) > 4*self.RoadParams.laneWidth/2
+                if (posvec(2) > 4*self.RoadParams.laneWidth/2)
                     py(LeftRight < 0) = -maxEdge/2;    px(LeftRight < 0) = 0;
                     py(LeftRight > 0) = maxEdge/2;     px(LeftRight > 0) = 0;
                     py(UpDown < 0) = 0;
@@ -479,15 +479,16 @@ classdef Simulator < handle
 %                 [snakeX, snakeY] = snakedeform(x,y,1,0.75,0.5,25,px,py,5*5);
 %                 [snakeX,snakeY] = snakedeform(x,y,1,0.75,0.25,25,px,py,5*20);
 %                 [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.75,0.25,20,px,py,25); %*
-                [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.25,0.25,5,px,py,25);
+%                 [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.25,0.25,5,px,py,25);
+                
+                [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.25,0.25,5,px,py,100);
                 
                 %% Convert the snake into a commanded heading
                 xcenter = size(ipmIm,2)/2;
                 sx = diff(self.aVars.IPM.xRange)/size(ipmIm,2);
                 sy = diff(self.aVars.IPM.yRange)/size(ipmIm,1);
                 
-                % Grab a point ~50ft in down the curve (i.e.
-                % 50ft/300ft*100pts --> 17th index)
+                % Grab a point ~50ft in down the curve
                 drInd = interp1(snakeY*sy, 1:length(snakeY), 50, 'nearest');
                 if isempty(drInd) || isnan(drInd)
                     % rough estimate: 50ft/300ft*100pts --> 17th index
@@ -536,7 +537,16 @@ classdef Simulator < handle
                 plot(ax, 0, 0, 'x', (vpx-xcenter)*sx, vpy*sy, 'o')
                 quiver(0,0, ptX, ptY, 'c', 'Parent', ax, 'LineWidth', 3)
                 
-%                 keyboard
+                mHF = figure; 
+                ax = gca(mHF);
+                tIm = imoverlay(uint8(rgbIPM), uint8(isObstacle), [1 0 0]);
+                imshow(rot90(tIm,2), 'Parent', ax, 'XData', (self.aVars.IPM.xRange), 'YData', fliplr(self.aVars.IPM.yRange))
+%                 imshow(rot90(isObstacle,2), 'Parent', ax, 'XData', (self.aVars.IPM.xRange), 'YData', fliplr(self.aVars.IPM.yRange))
+                hold(ax, 'on'), set(ax,'yDir','normal')%,'xdir','reverse')
+                plot(ax, (xcenter-snakeX)*sx, snakeY*sy, 'Color', [0.5 1 0], 'linewidth', 3); 
+                title('Counter-clockwise')
+                
+                keyboard
 
                 %%
                 obstacleOnPath = interp2(double(isObstacle), snakeX, snakeY, 'nearest');

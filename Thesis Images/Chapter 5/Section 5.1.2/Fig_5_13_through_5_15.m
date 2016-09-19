@@ -2,23 +2,23 @@ function Fig_5_13_through_5_15
     %% Generate the labyrinth
 %     I3 = maze(5, 5, 'c', 1);   % figure 5-1
 %     I1 = maze(5, 5, 'c', 3);   % figure 5-7
-%     I2 = maze(5, 5, 'c', 5);   % figure 5-8
+%     I = maze(5, 5, 'c', 5);   % figure 5-8
 %     I = maze(5, 5, 'c', 4);   % figure 5-12
 %     I = maze(5, 5, 'c', 15);   % figure 5-16, hfs2
-%     I = maze(5, 5, 'c', 19);   % figure 5-17, hfs3
-    I = maze(5, 5, 'c', 34);   % figure 5-17, hfs3
+    I = maze(5, 5, 'c', 19);   % figure 5-17, hfs3
+% %     I = maze(5, 5, 'c', 34);   
     
     
-    [~, hfS4] = performAlgo(I, true, true);
+%     [~, hfS4] = performAlgo(I, true, true);
 
-    [~, hfS2] = performAlgo(I, true, false);
-%     saveas(hfS2, 'Thesis Images\Chapter 5\figure_5_14-CounterClockwise', 'png');
+%     [~, hfS2] = performAlgo(I, true, false);
+%     saveas(hfS2, 'Thesis Images\Chapter 5\figure_5_16-CounterClockwise', 'png');
     
     [~, hfS3] = performAlgo(I, false, false);
-%     saveas(hfS3, 'Thesis Images\Chapter 5\figure_5_15-ReversedSlope_CounterClockwise', 'png');
-
-    [~, hfS1] = performAlgo(I, false, true);
-%     saveas(hfS1, 'Thesis Images\Chapter 5\figure_5_13-ReversedSlope', 'png');
+    saveas(hfS3, 'Thesis Images\Chapter 5\figure_5_17-ReversedSlope_CounterClockwise', 'png');
+% 
+%     [~, hfS1] = performAlgo(I, false, true);
+% %     saveas(hfS1, 'Thesis Images\Chapter 5\figure_5_13-ReversedSlope', 'png');
     
     
 end
@@ -128,7 +128,7 @@ function [hfGradient, hfSolution] = performAlgo(I, towardsGoal, clockwise)
     hSpline = plot(x_s,y_s,'bo');
 
     alpha = 0.05;% 0.4;%0.5; 
-    beta = 0.0;%0.5;
+    beta = 0.001;%0.5;
     gamma = 1;
     kappa = 0.96;
     A = imfilter(eye(length(t)), [beta -alpha-4*beta 2*alpha+6*beta -alpha-4*beta beta], 'same', 'conv', 'circular');
