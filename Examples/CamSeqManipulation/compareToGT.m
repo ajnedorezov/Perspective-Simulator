@@ -61,6 +61,9 @@ for n = 7959:2:8159
     ylabel('Original')
     
     %% Detect obstacles by checking if its a horizontal streak
+    h = fspecial('gaussian', [10 10]);
+    newVidFrame = imfilter(newVidFrame, h);
+    
     grayIm = sum(newVidFrame,3) > 0;
     newLabels = bwlabeln(grayIm);
 
@@ -132,10 +135,14 @@ for n = 7959:2:8159
     
 %     break
     fprintf('Frame: %s\n', imName)
+    drawnow
 end
-
-save('Examples\CamSeqManipulation\CamSeq01_Results.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity')
-% save('Examples\CamSeqManipulation\CamSeq01_EdgeResults.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity')
 
 % Accuracy:
 accuracy = (sum(truePositive) + sum(trueNegative))/ (sum(truePositive) + sum(trueNegative) + sum(falsePositive) + sum(falseNegative));
+
+% save('Examples\CamSeqManipulation\CamSeq01_Results.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity', 'precision')
+save('Examples\CamSeqManipulation\CamSeq01_SmoothedResults.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity', 'precision', 'accuracy')
+% save('Examples\CamSeqManipulation\CamSeq01_EdgeResults.mat', 'truePositive', 'falsePositive', 'trueNegative', 'falseNegative', 'sensitivity', 'specificity')
+
+

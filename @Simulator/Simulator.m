@@ -247,8 +247,8 @@ classdef Simulator < handle
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
             tic
-            posvec = [-45*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
-%             posvec = [10 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
+%             posvec = [-45*delT 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
+            posvec = [10 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
 %             posvec = [10 1*self.RoadParams.laneWidth/2 self.CameraParams.height];
             commandedHeading = 0;
             currentYaw = 0;
