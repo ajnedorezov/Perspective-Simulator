@@ -12,8 +12,8 @@ classdef Simulator < handle
         StaticObjects
         MovingObjects
         
-%         MakeVideo = true;
-        MakeVideo = false;
+        MakeVideo = true;
+%         MakeVideo = false;
         
         Lighting
     end
@@ -174,11 +174,11 @@ classdef Simulator < handle
 %             carlane = randi(self.RoadParams.numLanes,1,self.SimulationParams.numCars)-1;
 %             carlane = [2 0 1 1];
 %             carlane = [2 0 1 2];
-            carlane = [1 2];
-%             carlane = [0];
+%             carlane = [1 2];
+            carlane = [0];
             for n = 1:self.SimulationParams.numCars
-%                 self.MovingObjects.Cars(n) = surface(x + 10 + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
-                self.MovingObjects.Cars(n) = surface(x + 10 + 25, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
+                self.MovingObjects.Cars(n) = surface(x + 10 + 25*n, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
+%                 self.MovingObjects.Cars(n) = surface(x + 10 + 25, y + (carlane(n)+0.5)*self.RoadParams.laneWidth - self.CarParams.width/2, z, 'FaceColor', self.CarParams.color, 'UserData', self.CarParams.color);
             end
             
         end
@@ -222,9 +222,11 @@ classdef Simulator < handle
         end
         
         function Simulate(self)
+            saveDir = 'Thesis Images\Chapter 5\Section 5.3.1\Case 2\';
+            
             delT = 1/3;
             if self.MakeVideo
-                mov = VideoWriter('Examples\CamSeqManipulation\PathIntersectingObstacles-Case4_v2.avi');
+                mov = VideoWriter([saveDir 'Video.avi']);
                 mov.FrameRate = round(1/delT);
                 open(mov);
             end
@@ -247,9 +249,9 @@ classdef Simulator < handle
             % For a car traveling at 20m/s (~45mph) it will take ~80sec to
             % travel 1 mile
             tic
-            posvec = [-10*delT 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
+%             posvec = [-10*delT 3*self.RoadParams.laneWidth/2 self.CameraParams.height];
 %             posvec = [10 5*self.RoadParams.laneWidth/2 self.CameraParams.height];
-%             posvec = [10 1*self.RoadParams.laneWidth/2 self.CameraParams.height];
+            posvec = [10 1*self.RoadParams.laneWidth/2 self.CameraParams.height];
             commandedHeading = 0;
             currentYaw = 0;
             commandedSpeed = 29; % Travel @ 65 mph
@@ -259,6 +261,11 @@ classdef Simulator < handle
             endTime = 10; %30; %7.5;
             downRangeToObstacleOnPath = inf(1, length(0:delT:endTime));
             closestDownRangeToObstacle = inf(1, length(0:delT:endTime));
+            loggingCounter = 0;
+            posHistory = [];
+            yawHistory = [];
+            yawCmdHistory = [];
+            objectPosHistory = [];
             for t = 0:delT:endTime% 34.25;%
                 if ~ishandle(self.HD.MainView)
                     break
@@ -271,7 +278,13 @@ classdef Simulator < handle
                 currentSpeed = currentSpeed + 0.5*speedError;
                 
                 posvec = posvec + currentSpeed*[cos(currentYaw) sin(currentYaw) 0]*delT; 
+                
                 targvec = posvec + self.DriverParams.lookAheadDistance*[cos(currentYaw) sin(currentYaw) 0];
+                
+                loggingCounter = loggingCounter +1;
+                posHistory(loggingCounter, :) = posvec;
+                yawHistory(loggingCounter, :) = currentYaw;
+                yawCmdHistory(loggingCounter, :) = commandedHeading;
                 
                 campos(posvec);
                 camtarget(targvec);
@@ -280,6 +293,7 @@ classdef Simulator < handle
                 for m = 1:self.SimulationParams.numCars
                     xpos = get(self.MovingObjects.Cars(m), 'XData');
                     set(self.MovingObjects.Cars(m), 'XData', xpos + 26*delT)
+                    objectPosHistory(loggingCounter, [1:3]+3*(m-1)) = [mean(xpos(:)), mean(mean(get(self.MovingObjects.Cars(m), 'YData'))), 0];
                 end
 
                 %% Grab the image
@@ -417,6 +431,8 @@ classdef Simulator < handle
                 else
                     py(LeftRight < 0) = maxEdge/2;    px(LeftRight < 0) = 0;
                     py(LeftRight > 0) = -maxEdge/2;     px(LeftRight > 0) = 0;
+                    py(UpDown < 0) = 0;
+                    py(UpDown > 0) = 0;
                     px(UpDown < 0) = -maxEdge/2;
                     px(UpDown > 0) = maxEdge/2;
                 end    
@@ -426,13 +442,15 @@ classdef Simulator < handle
 %                 towardsGoal = false;
                 [cc,rr] = meshgrid(1:imsize(2), 1:imsize(1));
                 if towardsGoal
-                    dx = vpx - cc;
+                    % Need to flip vpx due to plotting
+                    dx = imsize(2) - vpx - cc;
                     dy = vpy - rr;
                 else
-                    dx = vpx - cc;
-                    dy = vpy - rr;
+                    dx = cc - (imsize(2) - vpx);
+                    dy = rr - vpy;
                 end
                 newMag =  sqrt(dx.*dx + dy.*dy) + eps;
+%                 quietZone = newMag < 50;
                 newMag = 1 - newMag./max(max(newMag));
                 [fx2,fy2] = gradient(newMag);
                 mag = hypot(fx2,fy2) + eps;
@@ -450,6 +468,9 @@ classdef Simulator < handle
                 magGVF = hypot(px,py) + 1e-10;
                 px = px./magGVF;
                 py = py./magGVF;
+                
+%                 px(quietZone) = 0;
+%                 py(quietZone) = 0;
 
 %                 [cc,rr] = meshgrid(1:imsize(2), 1:imsize(1));
 %                 dy = vpy - rr;
@@ -460,19 +481,31 @@ classdef Simulator < handle
 %                 py(isObstacle)  = 0.75*py(isObstacle) + 0.25*dy(isObstacle)./newMag(isObstacle);
 
 %                 % Plot the gradient vectors
-%                 [qx,qy] = meshgrid(1:10:imsize(1), 1:10:imsize(2));
+%                 figure, 
+%                 [qx,qy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
 %                 ind = sub2ind(imsize, qx,qy);
-%                 subplot(122), quiver(qy,qx,px(ind),py(ind)); set(gca, 'ydir', 'normal','xdir','reverse')
+%                 quiver(qy,qx,px(ind),py(ind)); set(gca, 'ydir', 'normal','xdir','reverse'), axis equal
 
                 % Initialize the snake
                 if t == 0 
+                    if self.MakeVideo
+                        campos(posvec + [0 0 5]);
+                        camtarget(posvec + [40 0 0]);
+                        temp = getframe(self.HD.MainView);
+                        sceneView = temp.cdata;
+                        save([saveDir 'sceneView.mat'], 'sceneView');
+                        campos(posvec);
+                        camtarget(targvec);
+                    end
+                    
                     snakeTime = linspace(0,1, 100)';
                     cx = floor(imsize(2)/2);
                     cy = 1;
                     snakeX = cx + snakeTime.*(vpx-cx); % vpx.*t + (1-t).*cx;
                     snakeY = cy + snakeTime.*(vpy-cy);
                 else
-                    snakeX(end) = vpx;
+                    % Need to flip vpx due to plotting
+                    snakeX(end) = imsize(2) - vpx;
                     snakeY(end) = vpy;
                 end
 % 
@@ -537,16 +570,16 @@ classdef Simulator < handle
                 plot(ax, 0, 0, 'x', (vpx-xcenter)*sx, vpy*sy, 'o')
                 quiver(0,0, ptX, ptY, 'c', 'Parent', ax, 'LineWidth', 3)
                 
-                mHF = figure; 
-                ax = gca(mHF);
-                tIm = imoverlay(uint8(rgbIPM), uint8(isObstacle), [1 0 0]);
-                imshow(rot90(tIm,2), 'Parent', ax, 'XData', (self.aVars.IPM.xRange), 'YData', fliplr(self.aVars.IPM.yRange))
-%                 imshow(rot90(isObstacle,2), 'Parent', ax, 'XData', (self.aVars.IPM.xRange), 'YData', fliplr(self.aVars.IPM.yRange))
-                hold(ax, 'on'), set(ax,'yDir','normal')%,'xdir','reverse')
-                plot(ax, (xcenter-snakeX)*sx, snakeY*sy, 'Color', [0.5 1 0], 'linewidth', 3); 
-                title('Counter-clockwise')
+%                 mHF = figure; 
+%                 ax = gca(mHF);
+%                 tIm = imoverlay(uint8(rgbIPM), uint8(isObstacle), [1 0 0]);
+%                 imshow(rot90(tIm,2), 'Parent', ax, 'XData', (self.aVars.IPM.xRange), 'YData', fliplr(self.aVars.IPM.yRange))
+% %                 imshow(rot90(isObstacle,2), 'Parent', ax, 'XData', (self.aVars.IPM.xRange), 'YData', fliplr(self.aVars.IPM.yRange))
+%                 hold(ax, 'on'), set(ax,'yDir','normal')%,'xdir','reverse')
+%                 plot(ax, (xcenter-snakeX)*sx, snakeY*sy, 'Color', [0.5 1 0], 'linewidth', 3); 
+%                 title('Counter-clockwise')
                 
-                keyboard
+%                 keyboard
 
                 %%
                 obstacleOnPath = interp2(double(isObstacle), snakeX, snakeY, 'nearest');
@@ -563,6 +596,8 @@ classdef Simulator < handle
                 closestObstacleIntersectionIndex = find(closestObstacle==1, 1, 'first');
                 if ~isempty(closestObstacleIntersectionIndex)
                     closestDownRangeToObstacle(intersectionCounter) = closestObstacleIntersectionIndex*sy;
+                else
+                    closestDownRangeToObstacle(intersectionCounter) = inf;
                 end
                 
                 intersectionCounter = intersectionCounter + 1;
@@ -575,9 +610,15 @@ classdef Simulator < handle
                 drawnow
             end
             
+            if self.MakeVideo
+                save([saveDir 'historyLogging.mat'], 'posHistory', 'yawHistory', 'yawCmdHistory', 'objectPosHistory')
+                save([saveDir 'rangeInfo.mat'], 'downRangeToObstacleOnPath', 'closestDownRangeToObstacle', 'intersectionCounter')
+            end
+            
 %             dataToSave.downRangeToObstacleOnPath = downRangeToObstacleOnPath;
 %             dataToSave.closestDownRangeToObstacle = closestDownRangeToObstacle;
 %             save('Examples\CamSeqManipulation\downRangeToObstacle - Case 2v2.mat', '-struct', 'dataToSave')
+            
             figure, plot(1:(intersectionCounter-1), downRangeToObstacleOnPath, 'bo', 1:(intersectionCounter-1), closestDownRangeToObstacle, 'rx')
             if self.MakeVideo
                 close(mov)
