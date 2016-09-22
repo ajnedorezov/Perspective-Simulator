@@ -1,7 +1,7 @@
 %% Make the plots for section 5.3.1
 
 % Select the video
-caseNum = 1;
+caseNum = 3;
 
 startingFigNum = 22;
 switch(caseNum)
@@ -60,22 +60,28 @@ xlabel(ax(4), 'Time (s)')
 ylabel(ax(4), 'Heading (deg)');
 title(ax(4), 'Heading')
 
-saveas(hf, sprintf('Thesis Images\\Chapter 5\\figure_5_%d-Case%dResults', startingFigNum + 2*(caseNum-1), caseNum), 'png');
+% saveas(hf, sprintf('Thesis Images\\Chapter 5\\figure_5_%d-Case%dResults', startingFigNum + 2*(caseNum-1), caseNum), 'png');
+
+deltaThresh = 3;
+fprintf('# opportunities: %d\n', sum(directPath~=300 | solutionPath~=300));
+fprintf('# greater than: %d\n', sum((solutionPath - directPath) > deltaThresh));
+fprintf('# less than: %d\n', sum((solutionPath - directPath) < -deltaThresh));
+fprintf('# equal to: %d\n', sum(abs(solutionPath - directPath) < deltaThresh & directPath~=300));
 
 
-%% Create the sequence plot 
-% Override the subplot function with one that will make it tighter
-addpath(genpath('subtight'))
-msubplot = @(m,n,p,extra) subtightplot (m, n, p, [0.01 0.01], [0.01 0.01], [0.01 0.01]);
-
-vid = VideoReader(sprintf('Thesis Images\\Chapter 5\\Section 5.3.1\\Case %d\\Video.avi', caseNum));
-
-hf = figure('position', [5 150 1283 737]);
-for n = 1:length(vTimes)
-    ax = msubplot(1, 4, n);
-    frame = read(vid, vTimes(n));
-    imshow(frame, 'Parent', ax);
-    title(sprintf('Time: %02.2f sec', (vTimes(n)-1)/vid.FrameRate));
-end
-
-saveas(hf, sprintf('Thesis Images\\Chapter 5\\figure_5_%d-Case%dSequence', startingFigNum + 1 + 2*(caseNum-1), caseNum), 'png');
+% %% Create the sequence plot 
+% % Override the subplot function with one that will make it tighter
+% addpath(genpath('subtight'))
+% msubplot = @(m,n,p,extra) subtightplot (m, n, p, [0.01 0.01], [0.01 0.01], [0.01 0.01]);
+% 
+% vid = VideoReader(sprintf('Thesis Images\\Chapter 5\\Section 5.3.1\\Case %d\\Video.avi', caseNum));
+% 
+% hf = figure('position', [5 150 1283 737]);
+% for n = 1:length(vTimes)
+%     ax = msubplot(1, 4, n);
+%     frame = read(vid, vTimes(n));
+%     imshow(frame, 'Parent', ax);
+%     title(sprintf('Time: %02.2f sec', (vTimes(n)-1)/vid.FrameRate));
+% end
+% 
+% saveas(hf, sprintf('Thesis Images\\Chapter 5\\figure_5_%d-Case%dSequence', startingFigNum + 1 + 2*(caseNum-1), caseNum), 'png');
