@@ -36,7 +36,7 @@ for frame = max(timeRange(1)*vid.FrameRate, 1):timeRange(2)*vid.FrameRate
 end
 
 %% Compute the error between MCT & GT
-locDelta = abs(vpTrackerResults - gtData.gtVanishingPoint);
+locDelta = vpTrackerResults - gtData.gtVanishingPoint;
 error = hypot(locDelta(:,1), locDelta(:,2));
 
 stdMagnitude = hypot(gtData.pixelDeviation(:,1), gtData.pixelDeviation(:,2));
@@ -58,12 +58,12 @@ figure
 ax(1) = subplot(311);
 plot(locDelta(:,1)), hold on, plot(gtData.pixelDeviation(:,1), 'r:')
 title('Vanishing Point Estimate Error')
-ylabel('|X Error|')
+ylabel('X Error')
 legend('Error', 'GT STD')
 
 ax(2) = subplot(312);
 plot(locDelta(:,2)), hold on, plot(gtData.pixelDeviation(:,2), 'r:')
-ylabel('|Y Error|')
+ylabel('Y Error')
 legend('Error', 'GT STD')
 
 ax(3) = subplot(313);
@@ -73,4 +73,4 @@ xlabel('Frame #')
 
 linkaxes(ax, 'x')
 
-saveas(gcf, 'Thesis Images\Chapter 3\figure_3_8-MCTTrackerVsGroundTruthCurved', 'png');
+saveas(gcf, 'Thesis Images\Chapter 3\figure_3_10-MCTTrackerVsGroundTruthCurved', 'png');

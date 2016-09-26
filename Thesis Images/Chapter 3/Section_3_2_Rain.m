@@ -37,7 +37,7 @@ while vid.CurrentTime <= timeRange(2)
 end
 
 %% Compute the error between MCT & GT
-locDelta = abs(vpTrackerResults - gtData.gtVanishingPoint);
+locDelta = (vpTrackerResults - gtData.gtVanishingPoint);
 error = hypot(locDelta(:,1), locDelta(:,2));
 
 stdMagnitude = hypot(gtData.pixelDeviation(:,1), gtData.pixelDeviation(:,2));
@@ -74,4 +74,4 @@ xlabel('Frame #')
 
 linkaxes(ax, 'x')
 
-saveas(gcf, 'Thesis Images\Chapter 3\figure_3_10-MCTTrackerVsGroundTruthRain', 'png');
+saveas(gcf, 'Thesis Images\Chapter 3\figure_3_12-MCTTrackerVsGroundTruthRain', 'png');
