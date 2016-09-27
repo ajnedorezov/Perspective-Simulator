@@ -60,8 +60,13 @@ xlabel(ax(4), 'Time (s)')
 ylabel(ax(4), 'Heading (deg)');
 title(ax(4), 'Heading')
 
-saveas(hf, sprintf('Thesis Images\\Chapter 5\\figure_5_%d-Case%dResults', startingFigNum + 2*(caseNum-1), caseNum), 'png');
+% saveas(hf, sprintf('Thesis Images\\Chapter 5\\figure_5_%d-Case%dResults', startingFigNum + 2*(caseNum-1), caseNum), 'png');
 
+valids = solutionPath ~= 300 | directPath ~= 300;
+fprintf('lessThan: %d\n', sum((solutionPath(valids)-directPath(valids))<5))
+fprintf('equalTo: %d\n', sum(abs(solutionPath(valids)-directPath(valids))<5))
+fprintf('greaterThan: %d\n', sum((solutionPath(valids)-directPath(valids))>5))
+fprintf('#Opp: %d\n', sum(valids))
 
 %% Create the sequence plot 
 % Override the subplot function with one that will make it tighter
@@ -78,4 +83,4 @@ for n = 1:length(vTimes)
     title(sprintf('Time: %02.2f sec', (vTimes(n)-1)/vid.FrameRate));
 end
 
-saveas(hf, sprintf('Thesis Images\\Chapter 5\\figure_5_%d-Case%dSequence', startingFigNum + 1 + 2*(caseNum-1), caseNum), 'png');
+% saveas(hf, sprintf('Thesis Images\\Chapter 5\\figure_5_%d-Case%dSequence', startingFigNum + 1 + 2*(caseNum-1), caseNum), 'png');
