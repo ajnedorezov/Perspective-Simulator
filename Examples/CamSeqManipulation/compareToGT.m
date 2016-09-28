@@ -93,8 +93,8 @@ for n = 7959:2:8159
     r = vidFrameGT(:,:,1);
     g = vidFrameGT(:,:,2);
     b = vidFrameGT(:,:,3);
-    nonObstacle = r==128 & g==0 & b==192 |...   %LaneMkgsDriv
-                  r==128 & g==64 & b==128;      %Road
+    nonObstacle = (r==128 & g==0 & b==192) |...   %LaneMkgsDriv
+                  (r==128 & g==64 & b==128);      %Road
 
     labelIPM = double(nonObstacle(nearestIPM.indices));
     

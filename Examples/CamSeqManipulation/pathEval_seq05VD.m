@@ -99,27 +99,42 @@ while hasFrame(vid) && hasFrame(vidGT)
     % Limit vp to point in image
     m = (origvpx-size(newVidFrame,2)/2)/origvpy;
     vpy = size(newVidFrame,1);
-    vpx = vpy*m + size(newVidFrame,2)/2;
+%     vpx = vpy*m + size(newVidFrame,2)/2;
+    vpx = size(newVidFrame,2)/2;
 
     % Plot the current results
     clf(hf), 
-    ax0 = subplot(1,2,1,'Parent', hf); imshow(vidFrame, 'Parent', ax0);
+    ax0 = subplot(3,1,1,'Parent', hf); imshow(vidFrame, 'Parent', ax0);
 %     title(sprintf('Current Frame: %d', n))
 %     ylabel('Original')
     title('Original Frame:')
     
     %% Get the GT labeling of obstacles
-    r = double(vidFrameGT(:,:,1));
-    g = double(vidFrameGT(:,:,2));
-    b = double(vidFrameGT(:,:,3));
-    nonObstacle = (abs(r-128)<=5 & abs(g-0)<=5 & abs(b-192)<=50) |...   %LaneMkgsDriv
-                  (abs(r-128)<=5 & abs(g-62)<=5 & abs(b-130)<=5);      %Road
+%     r = double(vidFrameGT(:,:,1));
+%     g = double(vidFrameGT(:,:,2));
+%     b = double(vidFrameGT(:,:,3));
+%     nonObstacle = (abs(r-128)<=5 & abs(g-0)<=5 & abs(b-192)<=50) |...   %LaneMkgsDriv
+%                   (abs(r-122)<=7 & abs(g-62)<=5 & abs(b-130)<=5);      %Road
+    hsv = rgb2hsv(double(vidFrameGT));
+    h = double(hsv(:,:,1));
+    s = double(hsv(:,:,2));
+    v = double(hsv(:,:,3));
+    nonObstacle = (h >= 0.76 & h < 0.8) |...   %LaneMkgsDriv
+                  (h >= 0.8 & h < 0.93);      %Road
+	nonObstacle = imdilate(nonObstacle, true(5,5));
+    nonObstacle = ~imdilate(~nonObstacle, true(10,10));
+              
     labelIPM = double(nonObstacle(nearestIPM.indices));
     
     gtObstacles = ~nonObstacle(nearestIPM.indices) & ~invalidPixels;
 %     gtRoadway = nonObstacle(nearestIPM.indices) & ~invalidPixels;
     
     %% Detect obstacles by checking if its a horizontal streak
+    % Filter the image to get rid of some noise
+    h = fspecial('gaussian', [10 10]);
+    newVidFrame = imfilter(newVidFrame, h);
+    
+    % Convert the image to binary
     grayIm = sum(newVidFrame,3) > 0;
     newLabels = bwlabeln(grayIm);
 
@@ -145,13 +160,13 @@ while hasFrame(vid) && hasFrame(vidGT)
     end
     
     %% Plot the obstacle data
-    ax = subplot(1,2,2, 'Parent', hf); 
+    ax = subplot(3,1,2:3, 'Parent', hf); 
     tIm = imoverlay(uint8(rgbIPM), uint8(isObstacle), [1 0 0]);
     imshow(rot90(tIm,2), 'Parent', ax, 'XData', myIPM.xRange, 'YData', fliplr(myIPM.yRange)-drOffset); hold(ax, 'on')
     axis(ax, 'equal', 'tight', 'on');
     xlabel(ax, 'Cross Range (ft)')
-    ylabel(ax, 'Down Range (ft)')
-    title(ax, 'Planning Result')
+    ylabel(ax, {'Planning Result', 'Down Range (ft)'})
+%     title(ax, 'Planning Result')
     set(ax,'yDir','normal')
     ylim(ax, [0 310])
     
@@ -253,6 +268,9 @@ while hasFrame(vid) && hasFrame(vidGT)
     px = px./magGVF;
     py = py./magGVF;
 
+    px(1:(4*drOffset),:) = 0;
+    py(1:(4*drOffset),:) = 0;
+    
 %     % Plot the gradient vectors
 %     figure
 %     [qx,qy] = meshgrid(1:5:imsize(1), 1:5:imsize(2));
@@ -263,7 +281,7 @@ while hasFrame(vid) && hasFrame(vidGT)
 %     if initializeSnake 
         snakeTime = linspace(0,1, 100)';
         cx = floor(imsize(2)/2);
-        cy = 1;
+        cy = 4*drOffset;
         snakeX = cx + snakeTime.*(vpx-cx); % vpx.*t + (1-t).*cx;
         snakeY = cy + snakeTime.*(vpy-cy);
 %         initializeSnake = false;
@@ -279,7 +297,7 @@ while hasFrame(vid) && hasFrame(vidGT)
 %                 [snakeX, snakeY] = snakedeform(x,y,1,0.75,0.5,25,px,py,5*5);
 %                 [snakeX,snakeY] = snakedeform(x,y,1,0.75,0.25,25,px,py,5*20);
 %                 [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.75,0.25,20,px,py,25); %*
-    [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.25,0.25,5,px,py,25);
+    [snakeX,snakeY] = snakedeform(snakeX,snakeY,1,0.25,0.25,5,px,py,50);
     
     obstacleOnPath = interp2(double(isObstacle), snakeX, snakeY, 'nearest');
     obstacleIntersectionIndex = find(obstacleOnPath==1, 1, 'first');
@@ -295,10 +313,14 @@ while hasFrame(vid) && hasFrame(vidGT)
     end
 
 %     closestObstacle = isObstacle(:, 272);
-    closestObstacle = gtObstacles(:, 400);
+    closestObstacle = gtObstacles(:, round(xcenter));
     closestObstacleIntersectionIndex = find(closestObstacle==1, 1, 'first');
     if ~isempty(closestObstacleIntersectionIndex)
-        closestDownRangeToObstacle(intersectionCounter) = closestObstacleIntersectionIndex*sy;
+        closestDownRangeToObstacle(intersectionCounter) = closestObstacleIntersectionIndex*sy - drOffset;
+        plot(ax, 0, closestDownRangeToObstacle(intersectionCounter), 'mx', 'markersize', 10, 'linewidth', 3);
+        plot(ax2, 0, closestDownRangeToObstacle(intersectionCounter), 'mx', 'markersize', 10, 'linewidth', 3);
+    else
+        closestDownRangeToObstacle(intersectionCounter) = inf;
     end
 
     intersectionCounter = intersectionCounter + 1;
@@ -320,12 +342,12 @@ while hasFrame(vid) && hasFrame(vidGT)
 %     plot(ax, (xcenter-snakeX)*sx, snakeY*sy, 'Color', [0.5 1 0], 'linewidth', 2); 
     plot(ax, (xcenter-snakeX)*sx, snakeY*sy-drOffset, 'Color', [0.5 1 0], 'linewidth', 2); 
 %     plot(ax, 0, 0, 'x', (vpx-xcenter)*sx, vpy*sy, 'o')
-    quiver(0,0, ptX, ptY, 'c', 'Parent', ax, 'LineWidth', 3)
+%     quiver(0,0, ptX, ptY, 'c', 'Parent', ax, 'LineWidth', 3)
     
     ax2 = gca(hf2);
     plot(ax2, (xcenter-snakeX)*sx, snakeY*sy-drOffset, 'Color', [0.5 1 0], 'linewidth', 2); 
 %     plot(ax2, 0, 0, 'x', (vpx-xcenter)*sx, vpy*sy, 'o')
-    quiver(0,0, ptX, ptY, 'c', 'Parent', ax2, 'LineWidth', 3)
+%     quiver(0,0, ptX, ptY, 'c', 'Parent', ax2, 'LineWidth', 3)
     
     drawnow
 %     keyboard
